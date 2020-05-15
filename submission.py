@@ -1,4 +1,3 @@
-
 from random import choice
 def agent(obs):
     action = {}
