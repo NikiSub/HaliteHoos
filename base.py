@@ -94,15 +94,31 @@ class Agent():
 			 return 'NORTH'
 		return None
 
-global states
+
 states = {}
 
+#OBS
+#obs.player, obs.step (turn), obs.halite (map), obs.players
+
+#obs.players - array that can be indexed using obs.player. 
+#Each element returns halite count, shipyard dictionary, and ship dictionary
+#shipyard dictionary matches name to index in obs.halite map
+#ship dictionary matches to an array. index in obs.halite map is the first element. Second element is cargo of that ship.
+#Key values for the dictionary: "step_created - id" Ex: "2-1" is an object created on step 2 with an ID of 1.
+
+#Halite Map Index maping (r,c) maps to c+r*(total_number_of_columns)
+#Guess: total_number_of_columns = 21
+
 def agent(obs):
+	global states
+	#index = obs.step
+	#if(index==0 or index==1):
+		#print(obs)
+		#print(len(obs.halite))
 	start = time.time()
 	actions = {}
 	halite, shipyards, ships = obs.players[obs.player]
 	#opp_halite, opp_shipyards, opp_ships = obs.players[1]
-
 	board = HaliteBoard(obs)
 
 	for uid, shipyard in shipyards.items():
@@ -119,11 +135,13 @@ def agent(obs):
 		#print('STATE: ', curr_ship.agent_id, states[curr_ship.agent_id])
 		if(uid not in states):
 			states[uid] = COLLECT
+			print("COLLECT ",uid)
 
 		# collection logic: randomly move around until storage is > 500, at which point path to the closest shipyard
 		if(states[uid] == COLLECT):
 			if(ship_info[1] > 500):
 				states[uid] = DEPOSIT
+				print("DEPOSIT ",uid)
 			else:
 				action = curr_ship.return_random_action()
 				if(action is not None):
