@@ -211,7 +211,6 @@ lastHaliteSpawn = starting_halite
 
 #Halite Map Index maping (r,c) maps to c+r*(total_number_of_columns)
 #Guess: total_number_of_columns = 21
-
 def agent(obs):
 	global states,lastHaliteSpawn
 	#index = obs.step
@@ -261,11 +260,11 @@ def agent(obs):
 				if(a is not None):
 					destinations[uid] = a
 					action = curr_ship.move_to_target_location(a)#curr_ship.return_random_action()#curr_ship.move_to_target_location(a) #Move to the closest Halite Cell
-					if(obs.step==25): #Debug step
-						print(obs.step)
-						print("POSITION: ",curr_ship.coords_2d)
-						print("Closest Halite: ",a)
-						print("Halite: ", board.halite_board_2d[a[0]][a[1]])
+					#if(obs.step==25): #Debug step
+						#print(obs.step)
+						#print("POSITION: ",curr_ship.coords_2d)
+						#print("Closest Halite: ",a)
+						#print("Halite: ", board.halite_board_2d[a[0]][a[1]])
 						#print("Surrounding Halite: ",board.halite_board_2d[a[0]-1][a[1]],board.halite_board_2d[a[0]+1][a[1]],board.halite_board_2d[a[0]][a[1]-1],board.halite_board_2d[a[0]][a[1]+1]) #board.halite_board_2d[a[0]-1][a[1]]
 				else:
 					action = curr_ship.return_random_action()
@@ -277,6 +276,9 @@ def agent(obs):
 						next_locations.append(curr_ship_next_loc)
 					else:
 						alt_act, alt_next_loc = board.valid_stay(curr_ship.coords_2d,next_locations) #Check if it is okay to stay in the same place
+						print("collector ",obs.step)
+						print("POSITION: ",curr_ship.coords_2d)
+						print(alt_act, alt_next_loc)
 						if(alt_act is None):
 							next_locations.append(curr_ship.coords_2d)
 						else: #Move somewhere else because staying is not safe
@@ -317,6 +319,9 @@ def agent(obs):
 					#	states[uid] = COLLECT #Once deposited, go back and collect
 				else:
 					alt_act, alt_next_loc = board.valid_stay(curr_ship.coords_2d,next_locations)
+					print("depositor ",obs.step)
+					print("POSITION: ",curr_ship.coords_2d)
+					print(alt_act, alt_next_loc)
 					if(alt_act is None):
 						next_locations.append(curr_ship.coords_2d)
 					else:
@@ -333,10 +338,8 @@ def agent(obs):
 		if(halite-lastHaliteSpawn>=1000):
 			spawn = True
 			for n in next_locations:
-				print("A")
 				if(same_pos_2d(n,curr_yard.coords_2d)):
 					spawn = False
-				print("B")
 			if(spawn): #If there is room to spawn a new ship
 				actions[uid] = SPAWN
 				lastHaliteSpawn = halite
