@@ -19,12 +19,18 @@ BOARD_DIMS = 21
 def int_to_coords(num):
 	return (num%BOARD_DIMS, int(num//BOARD_DIMS))
 
+def manhattan_distance(p1, p2):
+	return abs(p1[0]-p2[0]) + abs(p1[1]-p2[1])
+
 
 class HaliteBoard():
 	def __init__(self, obs):
 		self.height = self.width = BOARD_DIMS
 
 		_, self.shipyards, self.ships = obs.players[obs.player]
+		self.enemy_data = []
+		for i in range(1, len(obs.players)):
+			self.enemy_data.append((None, obs.players[i][1], obs.players[i][2]))
 
 		self.agent_board_1d = np.array(list(range(self.width*self.height)))
 		self.agent_board_2d = np.array(list(range(self.width*self.height))).reshape(self.width, self.height)
@@ -106,11 +112,11 @@ def agent(obs):
 	board = HaliteBoard(obs)
 
 	for uid, shipyard in shipyards.items():
-		if(len(ships) == 0):
+		if(len(ships) == 0 or halite >= 3000):
 			actions[uid] = SPAWN
 
 	for uid, ship in ships.items():
-		if(len(shipyards) == 0):
+		if(len(shipyards) == 0 and halite >= 2000):
 			actions[uid] = CONVERT
 			continue
 
@@ -129,10 +135,11 @@ def agent(obs):
 				if(action is not None):
 					actions[uid] = action
 
-
 		# deposit logic: path naively back to the closest shipyard
 		if(states[uid] == DEPOSIT):
 			closest_shipyard = board.get_closest_shipyard(curr_ship.coords_2d)
+			if(curr_ship.coords_2d == closest_shipyard):
+				states[uid] = COLLECT
 			#print('DEPOSITING to ', curr_ship.coords_2d, closest_shipyard, len(board.get_shipyard_locations()))
 			moves = curr_ship.move_to_target_location(closest_shipyard)
 			if moves == None:
@@ -140,7 +147,7 @@ def agent(obs):
 			else:
 				ship_action = moves
 			if ship_action is not None:
-				actions[uid] = ship_action  
+				actions[uid] = ship_action
 
 	
 	end = time.time()
