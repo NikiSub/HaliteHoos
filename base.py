@@ -133,7 +133,7 @@ class HaliteBoard():
 			elif(valid[3]==1):
 				return ('WEST',west_pos)
 			else:
-				print("NO OPTION")
+				print("NO OPTION") #If this is printed, a crash is likely to occur
 				return (None,None)
 
 
@@ -192,7 +192,33 @@ class Agent():
 		if posistion_yx[1] > target_yx[1]:
 			 return 'WEST'
 		return None
-
+	def checkStay(self,board,next_locations,actions,uid):
+		alt_act, alt_next_loc = board.valid_stay(self.coords_2d,next_locations) #Check if it is okay to stay in the same place
+		if(alt_act is None):
+			#print("Staying Still at ",self.coords_2d)
+			next_locations.append(self.coords_2d)
+		else:
+			#print("Fleeing to ", alt_next_loc)
+			actions[uid] = alt_act
+			next_locations.append(alt_next_loc)
+	def checkAction(self,action,board,next_locations,actions,uid,**kwargs):
+		if(action is not None):
+			curr_ship_next_loc = board.valid_action(self.coords_2d,action,next_locations)
+			if(curr_ship_next_loc is not None):
+				actions[uid] = action
+				next_locations.append(curr_ship_next_loc)
+				#moveTarget = kwargs.get('moveTarget', None)
+				#if(moveTarget is not None):
+				#	if(moveTarget):
+				#		print("Moving toward ",curr_ship_next_loc)
+				#	else:
+				#		print("Moving randomly to ",curr_ship_next_loc)
+			else:
+				self.checkStay(board,next_locations,actions,uid)
+			return True
+		else:
+			self.checkStay(board,next_locations,actions,uid)
+			return False #To tell depositors to change into collectors
 class Yard():
 	def __init__(self, yard, agent_id):
 		self.agent_id = agent_id
@@ -214,26 +240,14 @@ lastHaliteSpawn = starting_halite
 #Guess: total_number_of_columns = 21
 def agent(obs):
 	global states,lastHaliteSpawn
-	#index = obs.step
-	#if(index==0 or index==1):
-		#print(obs)
-		#print(len(obs.halite))
 	start = time.time()
-	#print(obs.step)
 	actions = {}
 	destinations = {}
-	print(obs.step)
+	#print(obs.step)
 	halite, shipyards, ships = obs.players[obs.player]
 	#opp_halite, opp_shipyards, opp_ships = obs.players[1]
 	board = HaliteBoard(obs)
 	next_locations = []
-	if(obs.step==6): #DEBUG 
-		print("Step: ", obs.step)
-		#print(board.agent_board_1d)
-		#print(board.agent_board_2d)
-		#print(board.halite_board_1d)
-		#print(board.halite_board_2d)
-		#print(board.halite_board_2d[2][1])
 	shipsSorted = []
 	uidSorted = []
 	for uid, ship in ships.items(): #look at DEPOSIT ships first
@@ -244,146 +258,54 @@ def agent(obs):
 		if(not((uid in states) and states[uid]== DEPOSIT)):
 			shipsSorted.append(ship)
 			uidSorted.append(uid)	
-	print("Number of ships: ",len(ships))
+	#print("Number of ships: ",len(ships))
 	shipCount = 0
 	#for uid, ship_info in ships.items():
 	for k in range(0,len(ships)):
 		uid = uidSorted[k]
 		ship_info = shipsSorted[k]
-		print("Info for Ship ",shipCount, "ID: ", uid)
+		#print("Info for Ship ",shipCount, "ID: ", uid)
 		shipCount+=1
 		curr_ship = Agent(ship_info, uid)
 		if(len(shipyards) == 0):
 			states[uid] = CONVERT
 			actions[uid] = CONVERT
-		#if(obs.step==6):#DEBUG 
-		#	print("SHIP Position:", curr_ship.coords_2d)
-		#print('STATE: ', curr_ship.agent_id, states[curr_ship.agent_id])
 		if(uid not in states):
 			states[uid] = COLLECT
-			print("becoming a collector")
-			#print(obs.step," COLLECT",uid)
+			#print("becoming a collector")
 
 		# collection logic: Move toward halite until storage is > 1000, at which point path to the closest shipyard
 		if(states[uid] == COLLECT):
 			#print(obs.step,int_to_coords(ship_info[0]),ship_info[1])
-			print("COLLECT")
+			#print("COLLECT")
 			if(ship_info[1] > 1000):
 				states[uid] = DEPOSIT
-				print("Becoming a depositor")
+				#print("Becoming a depositor")
 				# For now, stay still when transitioning states: TODO move back toward shipyard instead
-				alt_act, alt_next_loc = board.valid_stay(curr_ship.coords_2d,next_locations) #Check if it is okay to stay in the same place
-				if(alt_act is None):
-					print("Staying Still at ",curr_ship.coords_2d)
-					next_locations.append(curr_ship.coords_2d)
-				else:
-					print("Fleeing to ", alt_next_loc)
-					actions[uid] = alt_act
-					next_locations.append(alt_next_loc)
+				curr_ship.checkStay(board,next_locations,actions,uid)
 			else:
 				moveTarget = True
 				a = board.get_closest_halite_blacklist(curr_ship.coords_2d, obs.step+10,destinations.values()) #The threshold should increase as time goes on because halite grows over time.
 				if(a is not None):
 					destinations[uid] = a
 					action = curr_ship.move_to_target_location(a)#curr_ship.return_random_action()#curr_ship.move_to_target_location(a) #Move to the closest Halite Cell
-					#if(obs.step==25): #Debug step
-						#print(obs.step)
-						#print("POSITION: ",curr_ship.coords_2d)
-						#print("Closest Halite: ",a)
-						#print("Halite: ", board.halite_board_2d[a[0]][a[1]])
-						#print("Surrounding Halite: ",board.halite_board_2d[a[0]-1][a[1]],board.halite_board_2d[a[0]+1][a[1]],board.halite_board_2d[a[0]][a[1]-1],board.halite_board_2d[a[0]][a[1]+1]) #board.halite_board_2d[a[0]-1][a[1]]
 				else:
 					action = curr_ship.return_random_action()
 					moveTarget = False
 
-				if(action is not None):
-					curr_ship_next_loc = board.valid_action(curr_ship.coords_2d,action,next_locations)
-					if(curr_ship_next_loc is not None):
-						actions[uid] = action
-						next_locations.append(curr_ship_next_loc)
-						if(moveTarget):
-							print("Moving toward ",curr_ship_next_loc)
-						else:
-							print("Moving randomly to ",curr_ship_next_loc)
-					else:
-						alt_act, alt_next_loc = board.valid_stay(curr_ship.coords_2d,next_locations) #Check if it is okay to stay in the same place
-						#print("collector ",obs.step)
-						#print("POSITION: ",curr_ship.coords_2d)
-						#print(alt_act, alt_next_loc)
-						if(alt_act is None):
-							print("Staying Still at ",curr_ship.coords_2d)
-							#print("POSITION: ",curr_ship.coords_2d)
-							next_locations.append(curr_ship.coords_2d)
-						else: #Move somewhere else because staying is not safe
-							print("Fleeing to ", alt_next_loc)
-							actions[uid] = alt_act
-							next_locations.append(alt_next_loc)
-				else:
-					alt_act, alt_next_loc = board.valid_stay(curr_ship.coords_2d,next_locations) #Check if it is okay to stay in the same place
-					#print("collector ",obs.step)
-					#print("POSITION: ",curr_ship.coords_2d)
-					#print(alt_act, alt_next_loc)
-					if(alt_act is None):
-						print("Staying Still at ",curr_ship.coords_2d)
-						#print("POSITION: ",curr_ship.coords_2d)
-						next_locations.append(curr_ship.coords_2d)
-					else: #Move somewhere else because staying is not safe
-						print("Fleeing to ", alt_next_loc)
-						actions[uid] = alt_act
-						next_locations.append(alt_next_loc)					
-				# check if this action is valid, if it is add it to the next_location list
-				#if not, make this ship stay still
-				#else:
-					#print("STAY STILL")
-					#action = curr_ship.return_random_action()
-					#if(action is not None):
-						#actions[uid] = action
-						#print("RANDOM MOVE")
-					#a=board.get_closest_halite(curr_ship.coords_2d, 0.0)
-					#print("POSITION: ",curr_ship.coords_2d)
-					#print("Closest Halite: ",a)
-					#print("Halite: ", board.halite_board_2d[a[0]][a[1]],board.halite_board_2d[a[0]-1][a[1]])
-					#print(obs.step)
-					#if(obs.step==398):
-					#	print(board.halite_board_2d)
+				curr_ship.checkAction(action,board,next_locations,actions,uid,moveTarget=moveTarget)	
+
 
 
 		# deposit logic: path naively back to the closest shipyard
 		if(states[uid] == DEPOSIT):
-			print("DEPOSIT")
+			#print("DEPOSIT")
 			closest_shipyard = board.get_closest_shipyard(curr_ship.coords_2d)
 			#print('DEPOSITING to ', curr_ship.coords_2d, closest_shipyard, len(board.get_shipyard_locations()))
 			ship_action = curr_ship.move_to_target_location(closest_shipyard)
-			#if moves == None:
-			#	ship_action = None
-			#else:
-			#	ship_action = moves
-			if ship_action is not None:
-				curr_ship_next_loc = board.valid_action(curr_ship.coords_2d,ship_action,next_locations)
-				if(curr_ship_next_loc is not None):
-					actions[uid] = ship_action
-					next_locations.append(curr_ship_next_loc)
-					print("Moving toward ",curr_ship_next_loc)
-					#if(curr_ship_next_loc[0]==closest_shipyard[0] and curr_ship_next_loc[1]==closest_shipyard[1]):
-					#	states[uid] = COLLECT #Once deposited, go back and collect
-				else:
-					alt_act, alt_next_loc = board.valid_stay(curr_ship.coords_2d,next_locations)
-					#print("depositor ",obs.step)
-					#print("POSITION: ",curr_ship.coords_2d)
-					#print(alt_act, alt_next_loc)
-					if(alt_act is None):
-						print("Staying Still at ",curr_ship.coords_2d)
-						next_locations.append(curr_ship.coords_2d)
-					else:
-						print("Fleeing to ", alt_next_loc)
-						actions[uid] = alt_act
-						next_locations.append(alt_next_loc)
-					#if(curr_ship.coords_2d[0]==closest_shipyard[0] and curr_ship.coords_2d[1]==closest_shipyard[1]):
-					#	states[uid] = COLLECT #Once deposited, go back and collect
-			else:
+			action_not_none = curr_ship.checkAction(ship_action,board,next_locations,actions,uid)
+			if(not(action_not_none)):
 				states[uid] = COLLECT #Once deposited, go back and collect
-				print("Staying Still for Drop off at ",curr_ship.coords_2d)
-				next_locations.append(curr_ship.coords_2d)	
 	for uid, shipyard in shipyards.items():
 		curr_yard = Yard(shipyard, uid)
 		if(len(ships) == 0):
@@ -397,8 +319,8 @@ def agent(obs):
 				actions[uid] = SPAWN
 				lastHaliteSpawn = halite
 				next_locations.append(curr_yard.coords_2d)
-		if(obs.step>390):#DEBUG 
-			print("Yard Position:", curr_yard.coords_2d)
+		#if(obs.step>390):#DEBUG 
+		#	print("Yard Position:", curr_yard.coords_2d)
 	end = time.time()
 	#print(end-start)
 	#print(actions)
