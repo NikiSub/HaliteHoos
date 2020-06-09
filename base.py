@@ -330,5 +330,7 @@ def agent(obs):
 		#if(obs.step>390):#DEBUG 
 		#	print("Yard Position:", curr_yard.coords_2d)
 	end = time.time()
+	if(obs.step==398):
+		print(obs.halite)
 	return actions
 
