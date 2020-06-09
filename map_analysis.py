@@ -249,88 +249,23 @@ lastHaliteSpawn = starting_halite
 #Guess: total_number_of_columns = 21
 def agent(obs):
 	global states,lastHaliteSpawn
-	start = time.time()
+	#start = time.time()
 	actions = {}
-	destinations = {}
+	#destinations = {}
 	#print(obs.step)
 	halite, shipyards, ships = obs.players[obs.player]
 	#opp_halite, opp_shipyards, opp_ships = obs.players[1]
 	board = HaliteBoard(obs)
+	b = board.halite_board_2d
+	#if(obs.step==150):
+	#	print(obs.step)
+	#	print(board.halite_board_2d)
+	#print("B")
 	next_locations = []
 	shipsSorted = []
 	uidSorted = []
-	for uid, ship in ships.items(): #look at DEPOSIT ships first
-		if((uid in states) and states[uid]== DEPOSIT):
-			shipsSorted.append(ship)
-			uidSorted.append(uid)
-	for uid, ship in ships.items(): #look at DEPOSIT ships first
-		if(not((uid in states) and states[uid]== DEPOSIT)):
-			shipsSorted.append(ship)
-			uidSorted.append(uid)	
-	#print("Number of ships: ",len(ships))
-	shipCount = 0
-	#for uid, ship_info in ships.items():
-	for k in range(0,len(ships)):
-		uid = uidSorted[k]
-		ship_info = shipsSorted[k]
-		#print("Info for Ship ",shipCount, "ID: ", uid)
-		shipCount+=1
-		curr_ship = Agent(ship_info, uid)
-		if(len(shipyards) == 0 and halite >= 1000):
-			states[uid] = CONVERT
-			actions[uid] = CONVERT
-		if(uid not in states):
-			states[uid] = COLLECT
-			#print("becoming a collector")
-
-		# collection logic: Move toward halite until storage is > 1000, at which point path to the closest shipyard
-		if(states[uid] == COLLECT):
-			#print(obs.step,int_to_coords(ship_info[0]),ship_info[1])
-			#print("COLLECT")
-			if(ship_info[1] > 1000):
-				states[uid] = DEPOSIT
-				#print("Becoming a depositor")
-				# For now, stay still when transitioning states: TODO move back toward shipyard instead
-				curr_ship.checkStay(board,next_locations,actions,uid)
-			else:
-				moveTarget = True
-				a = board.get_closest_halite_blacklist(curr_ship.coords_2d, obs.step+10,destinations.values()) #The threshold should increase as time goes on because halite grows over time.
-				if(a is not None):
-					destinations[uid] = a
-					action = curr_ship.move_to_target_location(a)#curr_ship.return_random_action()#curr_ship.move_to_target_location(a) #Move to the closest Halite Cell
-				else:
-					action = curr_ship.return_random_action()
-					moveTarget = False
-
-				curr_ship.checkAction(action,board,next_locations,actions,uid,moveTarget=moveTarget)	
 
 
-		# deposit logic: path naively back to the closest shipyard
-		if(states[uid] == DEPOSIT):
-			#print("DEPOSIT")
-			closest_shipyard = board.get_closest_shipyard(curr_ship.coords_2d)
-			#print('DEPOSITING to ', curr_ship.coords_2d, closest_shipyard, len(board.get_shipyard_locations()))
-			ship_action = curr_ship.move_to_target_location(closest_shipyard)
-			action_not_none = curr_ship.checkAction(ship_action,board,next_locations,actions,uid)
-			if(not(action_not_none)):
-				states[uid] = COLLECT #Once deposited, go back and collect
-	for uid, shipyard in shipyards.items():
-		curr_yard = Yard(shipyard, uid)
-		if(len(ships) == 0):
-			actions[uid] = SPAWN
-		if(halite-lastHaliteSpawn>=1000):
-			spawn = True
-			for n in next_locations:
-				if(same_pos_2d(n,curr_yard.coords_2d)):
-					spawn = False
-			if(spawn): #If there is room to spawn a new ship
-				actions[uid] = SPAWN
-				lastHaliteSpawn = halite
-				next_locations.append(curr_yard.coords_2d)
-		#if(obs.step>390):#DEBUG 
-		#	print("Yard Position:", curr_yard.coords_2d)
 	end = time.time()
-	if(obs.step>390):
-		print(obs.halite)
-	return actions
+	return actions,b,obs.halite
 
