@@ -3,6 +3,8 @@ from kaggle_environments.envs.halite.halite import get_to_pos
 import logging
 import numpy as np
 import time
+import numpy as np
+import scipy.ndimage
 logging.basicConfig(filename='stdout.log',level=logging.DEBUG)
 
 
@@ -254,9 +256,20 @@ def agent(obs):
 	#destinations = {}
 	#print(obs.step)
 	halite, shipyards, ships = obs.players[obs.player]
-	#opp_halite, opp_shipyards, opp_ships = obs.players[1]
+	opp_halite, opp_shipyards, opp_ships = obs.players[1]
 	board = HaliteBoard(obs)
 	b = board.halite_board_2d
+	dominance = np.full_like(b, 0)
+	enemy_radius = 2
+	for uid, ship_info in opp_ships.items():
+		curr_ship = Agent(ship_info, uid)
+		for y in range(-enemy_radius,enemy_radius+1):
+			for x in range(-enemy_radius,enemy_radius+1):
+				newY = curr_ship.coords_2d[0]+y
+				newX = curr_ship.coords_2d[1]+x
+				if(newY>0 and newY<BOARD_DIMS and newX>0 and newX<BOARD_DIMS):
+					if(manhattan_distance(curr_ship.coords_2d,(newY,newX))<=3):
+						dominance[newY][newX] = 1
 	#if(obs.step==150):
 	#	print(obs.step)
 	#	print(board.halite_board_2d)
@@ -267,5 +280,5 @@ def agent(obs):
 
 
 	end = time.time()
-	return actions,b,obs.halite
+	return actions,b,obs.halite,dominance
 
