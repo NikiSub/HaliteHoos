@@ -1,5 +1,5 @@
 import random
-from kaggle_environments.envs.halite.halite import get_to_pos
+from kaggle_environments.envs.halite.halite import *
 import logging
 import numpy as np
 import time
@@ -55,6 +55,9 @@ class HaliteBoard():
 		halite_coords = list(zip(hy,hx))
 		return halite_coords
 
+	def get_ship_locations(self):
+		return [int_to_coords(ship[0]) for uid, ship in self.ships.items()]
+
 	# returns positions of ally shipyards
 	def get_shipyard_locations(self):
 		return [int_to_coords(shipyard) for uid, shipyard in self.shipyards.items()]
@@ -82,6 +85,7 @@ class HaliteBoard():
 		# from the dict get the closest set of coords     
 		closest_xy =  min(distances, key=distances.get)
 		return closest_xy
+
 	#checks for collision. returns the ships next position if this is a valid action. returns None otherwise. TODO: improve to not run into enemies
 	def valid_action(self,curr_pos,action,next_locations):
 		if(action=="SOUTH" and curr_pos[0]<(BOARD_DIMS-1)):
@@ -96,6 +100,7 @@ class HaliteBoard():
 			if(next_pos[0]==i[0] and next_pos[1]==next_pos[1]):
 				return None
 		return next_pos
+
 	def valid_stay(self,curr_pos,next_locations):
 		stay = True
 		valid = [1,1,1,1] #South, North, East, West
@@ -144,7 +149,6 @@ class HaliteBoard():
 			else:
 				print("NO OPTION") #If this is printed, a crash is likely to occur
 				return (None,None)
-
 
 
 
@@ -234,6 +238,8 @@ class Yard():
 		self.coords_1d = yard
 		self.coords_2d = int_to_coords(self.coords_1d)
 
+
+
 states = {}
 lastHaliteSpawn = starting_halite
 #OBS
@@ -269,6 +275,7 @@ def agent(obs):
 			uidSorted.append(uid)	
 	#print("Number of ships: ",len(ships))
 	shipCount = 0
+	shipyardConverted = False
 	#for uid, ship_info in ships.items():
 	for k in range(0,len(ships)):
 		uid = uidSorted[k]
@@ -276,9 +283,10 @@ def agent(obs):
 		#print("Info for Ship ",shipCount, "ID: ", uid)
 		shipCount+=1
 		curr_ship = Agent(ship_info, uid)
-		if(len(shipyards) == 0 and halite >= 1000):
+		if((len(shipyards) == 0 and halite >= 1000) or (obs.step > 100 and len(shipyards) < obs.step//50 and halite >= 5000 and shipyardConverted == False and random.randint(1,3) == 2)):
 			states[uid] = CONVERT
 			actions[uid] = CONVERT
+			shipyardConverted = True
 		if(uid not in states):
 			states[uid] = COLLECT
 			#print("becoming a collector")
@@ -287,7 +295,7 @@ def agent(obs):
 		if(states[uid] == COLLECT):
 			#print(obs.step,int_to_coords(ship_info[0]),ship_info[1])
 			#print("COLLECT")
-			if(ship_info[1] > 1000):
+			if(ship_info[1] > 500):
 				states[uid] = DEPOSIT
 				#print("Becoming a depositor")
 				# For now, stay still when transitioning states: TODO move back toward shipyard instead
@@ -316,8 +324,12 @@ def agent(obs):
 				states[uid] = COLLECT #Once deposited, go back and collect
 	for uid, shipyard in shipyards.items():
 		curr_yard = Yard(shipyard, uid)
-		if(len(ships) == 0):
-			actions[uid] = SPAWN
+		if((len(ships) == 0 or halite > 1000) and curr_yard.coords_2d not in board.get_ship_locations()):
+			if(obs.step >= 250 and halite > 10000):
+				actions[uid] = SPAWN
+			elif(obs.step < 250):
+				actions[uid] = SPAWN
+		'''
 		if(halite-lastHaliteSpawn>=1000):
 			spawn = True
 			for n in next_locations:
@@ -327,6 +339,7 @@ def agent(obs):
 				actions[uid] = SPAWN
 				lastHaliteSpawn = halite
 				next_locations.append(curr_yard.coords_2d)
+		'''
 		#if(obs.step>390):#DEBUG 
 		#	print("Yard Position:", curr_yard.coords_2d)
 	end = time.time()
