@@ -69,7 +69,9 @@ class HaliteBoard():
 			# find euclidean distance, doesn't take into account wrap around
 			dist = np.sqrt((i[0] - curr_pos[0])**2 + (i[1] - curr_pos[1])**2)
 			distances[i] = dist
-		# from the dict get the closest set of coords     
+		# from the dict get the closest set of coords
+		if(len(distances) == 0): # no shipyards available
+			return None  
 		closest_yx =  min(distances, key=distances.get)
 		return closest_yx
 
@@ -283,7 +285,7 @@ def agent(obs):
 		#print("Info for Ship ",shipCount, "ID: ", uid)
 		shipCount+=1
 		curr_ship = Agent(ship_info, uid)
-		if((len(shipyards) == 0 and halite >= 1000) or (obs.step > 100 and len(shipyards) < obs.step/50 and halite >= 5000 and shipyardConverted == False and random.randint(1,3) == 2)):
+		if((len(shipyards) == 0 and halite >= 1000) or (obs.step > 100 and len(shipyards) < obs.step/80 and halite >= 7000 and shipyardConverted == False and random.randint(1,3) == 2)):
 			states[uid] = CONVERT
 			actions[uid] = CONVERT
 			shipyardConverted = True
@@ -317,15 +319,23 @@ def agent(obs):
 		if(states[uid] == DEPOSIT):
 			#print("DEPOSIT")
 			closest_shipyard = board.get_closest_shipyard(curr_ship.coords_2d)
-			#print('DEPOSITING to ', curr_ship.coords_2d, closest_shipyard, len(board.get_shipyard_locations()))
-			ship_action = curr_ship.move_to_target_location(closest_shipyard)
-			action_not_none = curr_ship.checkAction(ship_action,board,next_locations,actions,uid)
-			if(not(action_not_none)):
-				states[uid] = COLLECT #Once deposited, go back and collect
+			if(closest_shipyard != None):
+				#print('DEPOSITING to ', curr_ship.coords_2d, closest_shipyard, len(board.get_shipyard_locations()))
+				ship_action = curr_ship.move_to_target_location(closest_shipyard)
+				action_not_none = curr_ship.checkAction(ship_action,board,next_locations,actions,uid)
+				if(not(action_not_none)):
+					states[uid] = COLLECT #Once deposited, go back and collect
+			elif(closest_shipyard == None and shipyardConverted == False):
+				states[uid] = CONVERT
+				actions[uid] = CONVERT
+				shipyardConverted = True
+
+
+
 	for uid, shipyard in shipyards.items():
 		curr_yard = Yard(shipyard, uid)
-		if((len(ships) == 0 or halite > 1000) and curr_yard.coords_2d not in board.get_ship_locations()):
-			if(obs.step >= 250 and halite > 10000):
+		if((len(ships) == 0 or halite > 500) and curr_yard.coords_2d not in board.get_ship_locations()):
+			if(obs.step >= 250 and halite > 5000):
 				actions[uid] = SPAWN
 			elif(obs.step < 250):
 				actions[uid] = SPAWN
