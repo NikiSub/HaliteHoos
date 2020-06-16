@@ -283,7 +283,7 @@ def agent(obs):
 		#print("Info for Ship ",shipCount, "ID: ", uid)
 		shipCount+=1
 		curr_ship = Agent(ship_info, uid)
-		if((len(shipyards) == 0 and halite >= 1000) or (obs.step > 100 and len(shipyards) < obs.step//50 and halite >= 5000 and shipyardConverted == False and random.randint(1,3) == 2)):
+		if((len(shipyards) == 0 and halite >= 1000) or (obs.step > 100 and len(shipyards) < obs.step/50 and halite >= 5000 and shipyardConverted == False and random.randint(1,3) == 2)):
 			states[uid] = CONVERT
 			actions[uid] = CONVERT
 			shipyardConverted = True
