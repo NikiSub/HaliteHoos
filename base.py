@@ -35,6 +35,8 @@ def manhattan_distance(p1, p2):
 
 class HaliteBoard():
 	def __init__(self, obs):
+		self.step = obs.step
+
 		self.height = self.width = BOARD_DIMS
 
 		_, self.shipyards, self.ships = obs.players[obs.player]
@@ -149,7 +151,7 @@ class HaliteBoard():
 			elif(valid[3]==1):
 				return ('WEST',west_pos)
 			else:
-				print("NO OPTION") #If this is printed, a crash is likely to occur
+				print(self.step, "NO OPTION") #If this is printed, a crash is likely to occur
 				return (None,None)
 
 
@@ -335,10 +337,7 @@ def agent(obs):
 	for uid, shipyard in shipyards.items():
 		curr_yard = Yard(shipyard, uid)
 		if((len(ships) == 0 or halite > 500) and curr_yard.coords_2d not in board.get_ship_locations()):
-			if(obs.step >= 250 and halite > 5000):
-				actions[uid] = SPAWN
-			elif(obs.step < 250):
-				actions[uid] = SPAWN
+			actions[uid] = SPAWN
 		'''
 		if(halite-lastHaliteSpawn>=1000):
 			spawn = True

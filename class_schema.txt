@@ -1,0 +1,96 @@
+Board: {
+    __init__(observation: Dict[str, Any], configuration: Dict[str, Any], next_actions: Optional[List[Dict[str, str]]] = None) -> None
+    cells -> Dict[Point, Cell]
+    ships -> Dict[ShipId, Ship]
+    shipyards -> Dict[ShipyardId, Shipyard]
+    players -> Dict[PlayerId, Player]
+
+    current_player_id -> PlayerId
+    current_player -> Player
+    opponents -> List[Player]
+
+    configuration -> Configuration
+    observation -> Dict[str, Any]
+    step -> int
+
+    next() -> Board
+
+    __deepcopy__(_) -> Board
+    __getitem__(point: Union[Tuple[int, int], Point]) -> Cell
+    __str__() -> str
+}
+Cell: {
+    position -> Point
+    halite -> float
+
+    ship_id -> Optional[ShipId]
+    ship -> Optional[Ship]
+
+    shipyard_id -> Optional[ShipyardId]
+    shipyard -> Optional[Shipyard]
+
+    north -> Cell
+    south -> Cell
+    east -> Cell
+    west -> Cell
+
+    neighbor(offset: Point) -> Cell
+}
+
+Ship: {
+    id -> ShipId
+    halite -> int
+
+    position -> Point
+    cell -> Cell
+
+    player_id -> PlayerId
+    player -> Player
+
+    next_action -> Optional[ShipAction]
+}
+Shipyard: {
+    id -> ShipyardId
+
+    position -> Point
+    cell -> Cell
+
+    player_id -> PlayerId
+    player -> Player
+
+    next_action -> Optional[ShipyardAct
+}
+
+Player: {
+    id -> PlayerId
+    is_current_player -> bool
+    halite -> int
+    next_actions -> Dict[str, str]
+
+    ship_ids -> List[ShipId]
+    ships -> List[Ship]
+
+    shipyard_ids -> List[ShipyardId]
+    shipyards -> List[Shipyard]
+}
+Point: {
+    x -> int
+    y -> int
+
+    translate(offset: Point, size: int) -> Point
+    to_index(size: int) -> int
+
+    @staticmethod
+    from_index(index: int, size: int) -> Point
+
+    __abs__() -> Point
+    __add__(other: Point) -> Point
+    __eq__(other: Point) -> bool
+    __floordiv__(denominator: int) -> Point
+    __hash__() -> int
+    __mod__(mod: int) -> Point
+    __mul__(factor: int) -> Point
+    __neg__() -> Point
+    __str__() -> str
+    __sub__(other: Point) -> Point
+}

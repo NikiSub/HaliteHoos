@@ -1,0 +1,24 @@
+Halite 3 Writeups:
+
+Rank 1:
+https://github.com/teccles-halite/halite3-bot
+
+Rank 2: 
+https://github.com/SiestaGuru/Halite-3-entry
+
+Rank 3: (I actually read this)
+https://recursive.cc/blog/halite-iii-postmortem.html
+
+
+https://mlomb.me/blog/halite-iii-postmortem
+
+https://forums.halite.io/t/thoughts-on-top-10-bots-esp-teccles-playing-style/1063.html
+
+https://stakernotes.com/diamond-ranked-ml-for-halite3/
+
+https://forums.halite.io/t/collection-of-post-mortems-bot-source-code/13359ba9.html?page=3
+
+https://www.cs.rutgers.edu/~kb572/pubs/Luna_MS_2011.pdf
+
+https://arxiv.org/pdf/1505.00200.pdf
+
