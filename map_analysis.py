@@ -5,6 +5,7 @@ import numpy as np
 import time
 import numpy as np
 import scipy.ndimage
+import matplotlib.pyplot as plt
 logging.basicConfig(filename='stdout.log',level=logging.DEBUG)
 
 
@@ -52,9 +53,49 @@ class MapAnalysis():
 	def smart_gauss_blur_thresh(self, sigma, miners, step):
 		g = scipy.ndimage.filters.gaussian_filter(self.board_2d_wrap,1.0)
 		threshold = min(miners*0.1*step+200,350)
-		print(step, threshold)
 		thresh = (g>threshold)*1
 		return g, thresh[1:1+BOARD_DIMS,1:1+BOARD_DIMS]
+	def create_cluster(self, cluster, q, threshold, count, sum_halite):
+		if(len(q) > 0):
+			#print("A")
+			a = q.pop(0)
+			i = a[0]
+			j = a[1]
+			#print(i,j)
+			i = (i%BOARD_DIMS)
+			j = (j%BOARD_DIMS)
+			#print(i,j)
+			if(sum_halite < threshold):
+				if(cluster[i][j]==0):
+					cluster[i][j]=count
+					#print("BOARD: ",self.board_2d[i][j])
+					sum_halite += self.board_2d[i][j]
+					#print("SUM: ",sum_halite)
+					q.append((i+1,j))
+					q.append((i-1,j))
+					q.append((i,j+1))
+					q.append((i,j-1))
+			s = self.create_cluster(cluster, q, threshold, count, sum_halite)
+			return s
+		else:
+			#print("A")
+			return sum_halite
+		#print(sum_halite)
+
+	def halite_cluster(self, group_threshold):
+		cluster = np.zeros(np.shape(self.board_2d))
+		count = 1
+		for i in range(0, BOARD_DIMS):
+			for j in range(0, BOARD_DIMS):
+				if(cluster[i][j]==0):
+					q = [(i,j)]
+					s = self.create_cluster(cluster, q, group_threshold, count, 0.0)
+					print(f'Count: {count}, Sum: {s}, Center: {i},{j}')
+					count+=1
+		#print(cluster)
+		#print(self.board_2d)
+		return cluster
+
 
 
 class HaliteBoard():
@@ -283,7 +324,7 @@ def agent(obs):
 	mapA = MapAnalysis(board.halite_board_2d)
 
 	b, b_concat, b_wrap = mapA.get()
-	thresh_wrap,thresh = mapA.smart_gauss_blur_thresh(1.0, 4, obs.step)
+	#thresh_wrap,thresh = mapA.smart_gauss_blur_thresh(1.0, 4, obs.step)
 	dominance = np.full_like(b, 0)
 	enemy_radius = 2
 	for uid, ship_info in opp_ships.items():
@@ -295,7 +336,11 @@ def agent(obs):
 				if(newY>0 and newY<BOARD_DIMS and newX>0 and newX<BOARD_DIMS):
 					if(manhattan_distance(curr_ship.coords_2d,(newY,newX))<=3):
 						dominance[newY][newX] = 1
-	#if(obs.step==150):
+	if(obs.step==10):
+		c = mapA.halite_cluster(1000)
+		#print(np.shape(mapA.board_2d))
+	else:
+		c = np.zeros(np.shape(mapA.board_2d))
 	#	print(obs.step)
 	#	print(board.halite_board_2d)
 	#print("B")
@@ -305,5 +350,5 @@ def agent(obs):
 
 
 	end = time.time()
-	return actions,b,b_concat,b_wrap,thresh_wrap,thresh #,dominance
+	return actions,mapA.board_2d,c
 
