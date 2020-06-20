@@ -9,6 +9,7 @@ logging.basicConfig(filename='stdout.log',level=logging.DEBUG)
 
 
 BOARD_DIMS = 21
+BOARD_HALF = BOARD_DIMS//2
 starting_halite = 5000
 DIRS = ["NORTH", "SOUTH", "EAST", "WEST", None]
 DIRS_TO_NUM = {"NORTH":-BOARD_DIMS, "SOUTH":BOARD_DIMS, "EAST":1, "WEST":-1, None:0}
@@ -33,6 +34,27 @@ def same_pos_2d(p1,p2):
 def manhattan_distance(p1, p2):
 	return abs(p1[0]-p2[0]) + abs(p1[1]-p2[1])
 
+class MapAnalysis():
+	def __init__(self, board):
+		self.board_2d = board
+		row = np.concatenate((board,board,board), axis=0)
+		self.board_2d_concat = np.concatenate((row,row,row), axis=1)
+		self.board_2d_wrap = self.board_2d_concat[BOARD_DIMS-1:(2*BOARD_DIMS)+1,BOARD_DIMS-1:(2*BOARD_DIMS)+1]
+
+	def get(self):
+		return self.board_2d, self.board_2d_concat, self.board_2d_wrap
+	
+	def gauss_blur_thresh(self, sigma, threshold):
+		g = scipy.ndimage.filters.gaussian_filter(self.board_2d_wrap,1.0)
+		thresh = (g>threshold)*1
+		return thresh, thresh[1:1+BOARD_DIMS,1:1+BOARD_DIMS]
+
+	def smart_gauss_blur_thresh(self, sigma, miners, step):
+		g = scipy.ndimage.filters.gaussian_filter(self.board_2d_wrap,1.0)
+		threshold = min(miners*0.1*step+200,350)
+		print(step, threshold)
+		thresh = (g>threshold)*1
+		return g, thresh[1:1+BOARD_DIMS,1:1+BOARD_DIMS]
 
 
 class HaliteBoard():
@@ -258,7 +280,10 @@ def agent(obs):
 	halite, shipyards, ships = obs.players[obs.player]
 	opp_halite, opp_shipyards, opp_ships = obs.players[1]
 	board = HaliteBoard(obs)
-	b = board.halite_board_2d
+	mapA = MapAnalysis(board.halite_board_2d)
+
+	b, b_concat, b_wrap = mapA.get()
+	thresh_wrap,thresh = mapA.smart_gauss_blur_thresh(1.0, 4, obs.step)
 	dominance = np.full_like(b, 0)
 	enemy_radius = 2
 	for uid, ship_info in opp_ships.items():
@@ -280,5 +305,5 @@ def agent(obs):
 
 
 	end = time.time()
-	return actions,b,obs.halite,dominance
+	return actions,b,b_concat,b_wrap,thresh_wrap,thresh #,dominance
 
