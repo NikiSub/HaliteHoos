@@ -66,9 +66,12 @@ class HaliteBoard():
 			# find euclidean distance, doesn't take into account wrap around
 			dist = np.sqrt((i[0] - curr_pos[0])**2 + (i[1] - curr_pos[1])**2)
 			distances[i] = dist
-		# from the dict get the closest set of coords     
-		closest_yx =  min(distances, key=distances.get)
-		return closest_yx
+		# from the dict get the closest set of coords
+		try:
+			closest_yx =  min(distances, key=distances.get)
+			return closest_yx
+		except:
+			return None
 
 	# returns the position of the closest halite deposit above a certain threshold, blacklist contains a list of locations not to go to.
 	def get_closest_halite(self, curr_pos, threshold):
@@ -311,16 +314,20 @@ def agent(obs):
 		if(states[uid] == DEPOSIT):
 			#print("DEPOSIT")
 			closest_shipyard = board.get_closest_shipyard(curr_ship.coords_2d)
-			#print('DEPOSITING to ', curr_ship.coords_2d, closest_shipyard, len(board.get_shipyard_locations()))
-			ship_action = curr_ship.move_to_target_location(closest_shipyard)
-			action_not_none = curr_ship.checkAction(ship_action,board,next_locations,actions,uid)
-			if(not(action_not_none)):
-				states[uid] = COLLECT #Once deposited, go back and collect
+			if closest_shipyard is None:
+				states[uid] = CONVERT
+				actions[uid] = CONVERT
+			else:
+				#print('DEPOSITING to ', curr_ship.coords_2d, closest_shipyard, len(board.get_shipyard_locations()))
+				ship_action = curr_ship.move_to_target_location(closest_shipyard)
+				action_not_none = curr_ship.checkAction(ship_action,board,next_locations,actions,uid)
+				if(not(action_not_none)):
+					states[uid] = COLLECT #Once deposited, go back and collect
 	for uid, shipyard in shipyards.items():
 		curr_yard = Yard(shipyard, uid)
 		if(len(ships) == 0):
 			actions[uid] = SPAWN
-		if(halite-lastHaliteSpawn>=1000):
+		if(halite>=1000 and len(ships)<8):
 			spawn = True
 			for n in next_locations:
 				if(same_pos_2d(n,curr_yard.coords_2d)):
@@ -332,7 +339,7 @@ def agent(obs):
 		#if(obs.step>390):#DEBUG 
 		#	print("Yard Position:", curr_yard.coords_2d)
 	end = time.time()
-	if(obs.step==398):
-		print(obs.halite)
+	#if(obs.step==398):
+	#	print(obs.halite)
 	return actions
 
