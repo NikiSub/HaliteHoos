@@ -320,7 +320,7 @@ def agent(obs):
 		curr_yard = Yard(shipyard, uid)
 		if(len(ships) == 0):
 			actions[uid] = SPAWN
-		if(halite-lastHaliteSpawn>=1000):
+		if(halite>=1000 and len(ships)<8):
 			spawn = True
 			for n in next_locations:
 				if(same_pos_2d(n,curr_yard.coords_2d)):

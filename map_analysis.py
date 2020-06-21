@@ -100,7 +100,7 @@ class MapAnalysis():
 					q = [(i,j)]
 					s = self.create_cluster(q, group_threshold, count, 0.0)
 					#print(f'Count: {count}, Sum: {s}, Center: {i},{j}')
-					self.cluster_centers[(i,j)] = s
+					self.cluster_centers[(i,j)] = (s, count)
 					count+=1
 		#print(cluster)
 		#print(self.board_2d)
@@ -113,7 +113,7 @@ class MapAnalysis():
 		for c in centers:
 			q = [c]
 			s = self.create_cluster(q, group_threshold, count, 0.0)
-			self.cluster_centers[c] = s
+			self.cluster_centers[c] = (s, count)
 			count += 1
 		self.halite_cluster_update(group_threshold, count)
 		return self.cluster
@@ -369,7 +369,7 @@ def agent(obs):
 					if(manhattan_distance(curr_ship.coords_2d,(newY,newX))<=3):
 						dominance[newY][newX] = 1
 	if(obs.step==3):
-		c = mapA.halite_cluster_max(1000,200)
+		c = mapA.halite_cluster_max(1000,25)
 		#print(np.shape(mapA.board_2d))
 	else:
 		c = np.zeros(np.shape(mapA.board_2d))

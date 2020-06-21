@@ -238,9 +238,10 @@ class Yard():
 		self.coords_2d = int_to_coords(self.coords_1d)
 
 states = {}
+collection_states = {}
 lastHaliteSpawn = starting_halite
 #OBS
-#obs.player, obs.step (turn), obs.halite (map), obs.players
+#obs.player, obs.step (turn) 0-398, obs.halite (map), obs.players
 
 #obs.players - array that can be indexed using obs.player. 
 #Each element returns halite count, shipyard dictionary, and ship dictionary
@@ -251,7 +252,7 @@ lastHaliteSpawn = starting_halite
 #Halite Map Index maping (r,c) maps to c+r*(total_number_of_columns)
 #Guess: total_number_of_columns = 21
 def agent(obs):
-	global states,lastHaliteSpawn
+	global states,lastHaliteSpawn,collection_states
 	start = time.time()
 	actions = {}
 	destinations = {}
@@ -263,6 +264,9 @@ def agent(obs):
 	next_locations = []
 	shipsSorted = []
 	uidSorted = []
+	destination_cluster = {}
+	if(obs.step==0):
+		mapA.halite_cluster_max(1000,25)
 	for uid, ship in ships.items(): #look at DEPOSIT ships first
 		if((uid in states) and states[uid]== DEPOSIT):
 			shipsSorted.append(ship)
@@ -293,10 +297,17 @@ def agent(obs):
 			#print("COLLECT")
 			if(ship_info[1] > 1000):
 				states[uid] = DEPOSIT
+				destination_cluster.pop(uid)
 				#print("Becoming a depositor")
 				# For now, stay still when transitioning states: TODO move back toward shipyard instead
 				curr_ship.checkStay(board,next_locations,actions,uid)
 			else:
+				if(uid not in destination_cluster): #Add to dictionary, set collection_state as going to cluster
+					pass
+					#a
+				#Go to cluster, or explore cluster
+				#Check if in cluster, if not, go toward center. else: explore
+				#explore: look
 				moveTarget = True
 				a = board.get_closest_halite_blacklist(curr_ship.coords_2d, obs.step+10,destinations.values()) #The threshold should increase as time goes on because halite grows over time.
 				if(a is not None):
@@ -316,8 +327,9 @@ def agent(obs):
 			#print('DEPOSITING to ', curr_ship.coords_2d, closest_shipyard, len(board.get_shipyard_locations()))
 			ship_action = curr_ship.move_to_target_location(closest_shipyard)
 			action_not_none = curr_ship.checkAction(ship_action,board,next_locations,actions,uid)
-			if(not(action_not_none)):
-				states[uid] = COLLECT #Once deposited, go back and collect
+			if(not(action_not_none)):#TODO: Ships currently waste 1 turn staying at shipyard
+				states[uid] = COLLECT #Once deposited, go back and collect 
+				#TODO: Add reclustering bc a depositor becomes a collector. run halite_cluster_specific?
 	for uid, shipyard in shipyards.items():
 		curr_yard = Yard(shipyard, uid)
 		if(len(ships) == 0):
