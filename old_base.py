@@ -1,6 +1,5 @@
 import random
 from kaggle_environments.envs.halite.halite import get_to_pos
-from map_analysis import MapAnalysis
 import logging
 import numpy as np
 import time
@@ -259,7 +258,6 @@ def agent(obs):
 	halite, shipyards, ships = obs.players[obs.player]
 	#opp_halite, opp_shipyards, opp_ships = obs.players[1]
 	board = HaliteBoard(obs)
-	mapA = MapAnalysis(board.halite_board_2d)
 	next_locations = []
 	shipsSorted = []
 	uidSorted = []
@@ -322,7 +320,7 @@ def agent(obs):
 		curr_yard = Yard(shipyard, uid)
 		if(len(ships) == 0):
 			actions[uid] = SPAWN
-		if(halite>=1000 and len(ships)<8):
+		if(halite-lastHaliteSpawn>=1000):
 			spawn = True
 			for n in next_locations:
 				if(same_pos_2d(n,curr_yard.coords_2d)):
