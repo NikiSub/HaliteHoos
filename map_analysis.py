@@ -5,7 +5,7 @@ import numpy as np
 import time
 import numpy as np
 import scipy.ndimage
-import matplotlib.pyplot as plt
+import math
 logging.basicConfig(filename='stdout.log',level=logging.DEBUG)
 
 
@@ -33,7 +33,9 @@ def same_pos_2d(p1,p2):
 	return False
 
 def manhattan_distance(p1, p2):
-	return abs(p1[0]-p2[0]) + abs(p1[1]-p2[1])
+	row_difference = min(abs(p1[0]-p2[0]),abs(p1[0]-p2[0]-BOARD_DIMS),abs(p1[0]-p2[0]+BOARD_DIMS))
+	col_difference = min(abs(p1[1]-p2[1]),abs(p1[1]-p2[1]-BOARD_DIMS),abs(p1[1]-p2[1]+BOARD_DIMS))
+	return row_difference + col_difference
 
 class MapAnalysis():
 	def __init__(self, board):
@@ -46,6 +48,18 @@ class MapAnalysis():
 
 	def get(self):
 		return self.board_2d, self.board_2d_concat, self.board_2d_wrap
+	def get_cluster(self):
+		return self.cluster
+
+	def get_cluster_center(self):
+		return self.cluster_centers
+
+	def set_board(self, board):
+		self.board_2d = board
+		row = np.concatenate((board,board,board), axis=0)
+		self.board_2d_concat = np.concatenate((row,row,row), axis=1)
+		self.board_2d_wrap = self.board_2d_concat[BOARD_DIMS-1:(2*BOARD_DIMS)+1,BOARD_DIMS-1:(2*BOARD_DIMS)+1]
+
 	def sorted_map(self,index_num):
 		a = np.argsort(self.board_2d, axis=None)
 		loc = []
@@ -53,6 +67,7 @@ class MapAnalysis():
 			b = a[len(a)-1-i]
 			loc.append(int_to_coords(b))
 		return loc
+
 	def gauss_blur_thresh(self, sigma, threshold):
 		g = scipy.ndimage.filters.gaussian_filter(self.board_2d_wrap,1.0)
 		thresh = (g>threshold)*1
@@ -63,7 +78,22 @@ class MapAnalysis():
 		threshold = min(miners*0.1*step+200,350)
 		thresh = (g>threshold)*1
 		return g, thresh[1:1+BOARD_DIMS,1:1+BOARD_DIMS]
-	def create_cluster(self, q, threshold, count, sum_halite):
+	#def chooseCluster(self, ship_coords_2d, destination_cluster):
+	# choose a cluster that is close to the location, far from enemies, and not too large in cell-size but large halite sum
+
+	def optimal_halite_location(self, cluster_id, ship_coords_2d): #given a ship's location and the cluster it is trying to go to, get the optimal cell that maximizes halite per step
+		cell_loc = np.transpose(np.nonzero(self.cluster==cluster_id))
+		optimal_location = (cell_loc[0][0],cell_loc[0][1])
+		optimal_halite_per_step = 0
+		for loc in cell_loc:
+			halite = self.board_2d[loc[0]][loc[1]]
+			dist = manhattan_distance(ship_coords_2d,(loc[0],loc[1]))
+			halite_per_step = math.floor(0.25*(halite*(1.02**dist)))/(1.0+dist)
+			if halite_per_step > optimal_halite_per_step:
+				optimal_halite_per_step = halite_per_step
+				optimal_location = (loc[0],loc[1])
+		return optimal_location
+	def create_cluster(self, q, threshold, cluster_id, sum_halite, cell_count):
 		if(len(q) > 0):
 			#print("A")
 			a = q.pop(0)
@@ -75,33 +105,31 @@ class MapAnalysis():
 			#print(i,j)
 			if(sum_halite < threshold):
 				if(self.cluster[i][j]==0):
-					self.cluster[i][j]=count
+					self.cluster[i][j]=cluster_id
 					#print("BOARD: ",self.board_2d[i][j])
 					sum_halite += self.board_2d[i][j]
+					cell_count += 1
 					#print("SUM: ",sum_halite)
 					q.append((i+1,j))
 					q.append((i-1,j))
 					q.append((i,j+1))
 					q.append((i,j-1))
-			s = self.create_cluster(q, threshold, count, sum_halite)
-			return s
+			s, c = self.create_cluster(q, threshold, cluster_id, sum_halite, cell_count)
+			return s, c
 		else:
 			#print("A")
-			return sum_halite
+			return sum_halite, cell_count
 		#print(sum_halite)
-	def get_cluster(self):
-		return self.cluster
-	def get_cluster_center(self):
-		return self.cluster_centers
-	def halite_cluster_update(self,group_threshold, count):
+
+	def halite_cluster_update(self,group_threshold, cluster_id):
 		for i in range(0, BOARD_DIMS):
 			for j in range(0, BOARD_DIMS):
 				if(self.cluster[i][j]==0):
 					q = [(i,j)]
-					s = self.create_cluster(q, group_threshold, count, 0.0)
-					#print(f'Count: {count}, Sum: {s}, Center: {i},{j}')
-					self.cluster_centers[(i,j)] = (s, count)
-					count+=1
+					s, cell_count = self.create_cluster(q, group_threshold, cluster_id, 0.0, 0)
+					#print(f'cluster_id: {cluster_id}, Sum: {s}, Center: {i},{j}')
+					self.cluster_centers[cluster_id] = (s, (i,j), cell_count)
+					cluster_id+=1
 		#print(cluster)
 		#print(self.board_2d)
 		return self.cluster
@@ -109,23 +137,25 @@ class MapAnalysis():
 	def halite_cluster_specific(self, group_threshold, centers): #centers is a list of location tuples (y,x)
 		self.cluster_centers = {}
 		self.cluster = np.zeros(np.shape(self.board_2d))
-		count = 1
+		cluster_id = 1
 		for c in centers:
 			q = [c]
-			s = self.create_cluster(q, group_threshold, count, 0.0)
-			self.cluster_centers[c] = (s, count)
-			count += 1
-		self.halite_cluster_update(group_threshold, count)
+			s, cell_count = self.create_cluster(q, group_threshold, cluster_id, 0.0, 0)
+			self.cluster_centers[cluster_id] = (s, c, cell_count)
+			cluster_id += 1
+		self.halite_cluster_update(group_threshold, cluster_id)
 		return self.cluster
+
 	def halite_cluster_max(self, group_threshold, index_num):
 		loc = self.sorted_map(index_num)
 		self.halite_cluster_specific(group_threshold, loc)
 		return self.cluster
+
 	def halite_cluster(self, group_threshold):
 		self.cluster_centers = {}
 		self.cluster = np.zeros(np.shape(self.board_2d))
-		count = 1
-		self.halite_cluster_update(group_threshold, count)
+		cluster_id = 1
+		self.halite_cluster_update(group_threshold, cluster_id)
 		return self.cluster
 
 
