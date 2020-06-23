@@ -45,6 +45,8 @@ class MapAnalysis():
 		self.board_2d_wrap = self.board_2d_concat[BOARD_DIMS-1:(2*BOARD_DIMS)+1,BOARD_DIMS-1:(2*BOARD_DIMS)+1]
 		self.cluster = np.zeros(np.shape(self.board_2d))
 		self.cluster_centers = {}
+		self.halite_regen_rate = 1.02
+		self.halite_mining_rate = 0.25
 
 	def get(self):
 		return self.board_2d, self.board_2d_concat, self.board_2d_wrap
@@ -81,17 +83,22 @@ class MapAnalysis():
 	#def chooseCluster(self, ship_coords_2d, destination_cluster):
 	# choose a cluster that is close to the location, far from enemies, and not too large in cell-size but large halite sum
 
-	def optimal_halite_location(self, cluster_id, ship_coords_2d): #given a ship's location and the cluster it is trying to go to, get the optimal cell that maximizes halite per step
+	def optimal_halite_location(self, cluster_id, ship_coords_2d, location_blacklist): #given a ship's location and the cluster it is trying to go to, get the optimal cell that maximizes halite per step
 		cell_loc = np.transpose(np.nonzero(self.cluster==cluster_id))
 		optimal_location = (cell_loc[0][0],cell_loc[0][1])
 		optimal_halite_per_step = 0
 		for loc in cell_loc:
-			halite = self.board_2d[loc[0]][loc[1]]
-			dist = manhattan_distance(ship_coords_2d,(loc[0],loc[1]))
-			halite_per_step = math.floor(0.25*(halite*(1.02**dist)))/(1.0+dist)
-			if halite_per_step > optimal_halite_per_step:
-				optimal_halite_per_step = halite_per_step
-				optimal_location = (loc[0],loc[1])
+			valid_loc = True
+			for loc_2 in location_blacklist:
+				if(same_pos_2d((loc[0],loc[1]),loc_2)):
+					valid_loc=False
+			if valid_loc:
+				halite = self.board_2d[loc[0]][loc[1]]
+				dist = manhattan_distance(ship_coords_2d,(loc[0],loc[1]))
+				halite_per_step = math.floor(self.halite_mining_rate*(halite*(self.halite_regen_rate**dist)))/(1.0+dist)
+				if halite_per_step > optimal_halite_per_step:
+					optimal_halite_per_step = halite_per_step
+					optimal_location = (loc[0],loc[1])
 		return optimal_location
 	def create_cluster(self, q, threshold, cluster_id, sum_halite, cell_count):
 		if(len(q) > 0):

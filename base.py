@@ -1,16 +1,20 @@
 import random
 from kaggle_environments.envs.halite.halite import get_to_pos
-from map_analysis import MapAnalysis
+#from map_analysis import MapAnalysis
 import logging
 import numpy as np
 import time
+import math
 logging.basicConfig(filename='stdout.log',level=logging.DEBUG)
 
 
 BOARD_DIMS = 21
+BOARD_HALF = BOARD_DIMS//2
 starting_halite = 5000
 DIRS = ["NORTH", "SOUTH", "EAST", "WEST", None]
 DIRS_TO_NUM = {"NORTH":-BOARD_DIMS, "SOUTH":BOARD_DIMS, "EAST":1, "WEST":-1, None:0}
+CLUSTER_SUM_GOAL = 1000
+CLUSTER_NUMBER_GOAL = 25
 
 COLLECT = "COLLECT"
 DEPOSIT = "DEPOSIT"
@@ -34,7 +38,150 @@ def manhattan_distance(p1, p2):
 	col_difference = min(abs(p1[1]-p2[1]),abs(p1[1]-p2[1]-BOARD_DIMS),abs(p1[1]-p2[1]+BOARD_DIMS))
 	return row_difference + col_difference
 
-#def chooseCluster(mapA, collection_states)
+def chooseCluster(mapA, destination_cluster, location_2d): #choose cluster to mine based on distance, sum, and cell size TODO: incorporate enemies into logic
+	cluster_num = len(mapA.cluster_centers)
+	max_score = 0
+	max_cluster_id = 0
+	for cluster_id, v in mapA.cluster_centers.items():
+		halite_sum = v[0]
+		cluster_center_pos = v[1]
+		cell_count = v[2]
+		dist = manhattan_distance(location_2d, cluster_center_pos)
+		max_dist = BOARD_DIMS-1
+		average_cluster_size = (BOARD_DIMS**2)//cluster_num
+		score = (max_dist-dist)+(halite_sum/CLUSTER_NUMBER_GOAL)*20+(average_cluster_size-cell_count)  #Maximize score  Want short distance, large sum, and small cell_count 
+		if score >= max_score and cluster_id not in destination_cluster.values():  #With current parameters Max score is about: (20) + (20+) + (~15)
+			max_score = score
+			max_cluster_id = cluster_id
+	return max_cluster_id
+
+class MapAnalysis():
+	def __init__(self, board):
+		self.board_2d = board
+		row = np.concatenate((board,board,board), axis=0)
+		self.board_2d_concat = np.concatenate((row,row,row), axis=1)
+		self.board_2d_wrap = self.board_2d_concat[BOARD_DIMS-1:(2*BOARD_DIMS)+1,BOARD_DIMS-1:(2*BOARD_DIMS)+1]
+		self.cluster = np.zeros(np.shape(self.board_2d))
+		self.cluster_centers = {}
+		self.halite_regen_rate = 1.02
+		self.halite_mining_rate = 0.25
+
+	def get(self):
+		return self.board_2d, self.board_2d_concat, self.board_2d_wrap
+	def get_cluster(self):
+		return self.cluster
+
+	def get_cluster_center(self):
+		return self.cluster_centers
+
+	def set_board(self, board):
+		self.board_2d = board
+		row = np.concatenate((board,board,board), axis=0)
+		self.board_2d_concat = np.concatenate((row,row,row), axis=1)
+		self.board_2d_wrap = self.board_2d_concat[BOARD_DIMS-1:(2*BOARD_DIMS)+1,BOARD_DIMS-1:(2*BOARD_DIMS)+1]
+
+	def sorted_map(self,index_num):
+		a = np.argsort(self.board_2d, axis=None)
+		loc = []
+		for i in range(0,min(index_num,BOARD_DIMS**2)):
+			b = a[len(a)-1-i]
+			loc.append(int_to_coords(b))
+		return loc
+
+	def gauss_blur_thresh(self, sigma, threshold):
+		g = scipy.ndimage.filters.gaussian_filter(self.board_2d_wrap,1.0)
+		thresh = (g>threshold)*1
+		return thresh, thresh[1:1+BOARD_DIMS,1:1+BOARD_DIMS]
+
+	def smart_gauss_blur_thresh(self, sigma, miners, step):
+		g = scipy.ndimage.filters.gaussian_filter(self.board_2d_wrap,1.0)
+		threshold = min(miners*0.1*step+200,350)
+		thresh = (g>threshold)*1
+		return g, thresh[1:1+BOARD_DIMS,1:1+BOARD_DIMS]
+	#def chooseCluster(self, ship_coords_2d, destination_cluster):
+	# choose a cluster that is close to the location, far from enemies, and not too large in cell-size but large halite sum
+
+	def optimal_halite_location(self, cluster_id, ship_coords_2d, location_blacklist): #given a ship's location and the cluster it is trying to go to, get the optimal cell that maximizes halite per step
+		cell_loc = np.transpose(np.nonzero(self.cluster==cluster_id))
+		optimal_location = (cell_loc[0][0],cell_loc[0][1])
+		optimal_halite_per_step = 0
+		for loc in cell_loc:
+			valid_loc = True
+			for loc_2 in location_blacklist:
+				if(same_pos_2d((loc[0],loc[1]),loc_2)):
+					valid_loc=False
+			if valid_loc:
+				halite = self.board_2d[loc[0]][loc[1]]
+				dist = manhattan_distance(ship_coords_2d,(loc[0],loc[1]))
+				halite_per_step = math.floor(self.halite_mining_rate*(halite*(self.halite_regen_rate**dist)))/(1.0+dist)
+				if halite_per_step > optimal_halite_per_step:
+					optimal_halite_per_step = halite_per_step
+					optimal_location = (loc[0],loc[1])
+		return optimal_location
+	def create_cluster(self, q, threshold, cluster_id, sum_halite, cell_count):
+		if(len(q) > 0):
+			#print("A")
+			a = q.pop(0)
+			i = a[0]
+			j = a[1]
+			#print(i,j)
+			i = (i%BOARD_DIMS)
+			j = (j%BOARD_DIMS)
+			#print(i,j)
+			if(sum_halite < threshold):
+				if(self.cluster[i][j]==0):
+					self.cluster[i][j]=cluster_id
+					#print("BOARD: ",self.board_2d[i][j])
+					sum_halite += self.board_2d[i][j]
+					cell_count += 1
+					#print("SUM: ",sum_halite)
+					q.append((i+1,j))
+					q.append((i-1,j))
+					q.append((i,j+1))
+					q.append((i,j-1))
+			s, c = self.create_cluster(q, threshold, cluster_id, sum_halite, cell_count)
+			return s, c
+		else:
+			#print("A")
+			return sum_halite, cell_count
+		#print(sum_halite)
+
+	def halite_cluster_update(self,group_threshold, cluster_id):
+		for i in range(0, BOARD_DIMS):
+			for j in range(0, BOARD_DIMS):
+				if(self.cluster[i][j]==0):
+					q = [(i,j)]
+					s, cell_count = self.create_cluster(q, group_threshold, cluster_id, 0.0, 0)
+					#print(f'cluster_id: {cluster_id}, Sum: {s}, Center: {i},{j}')
+					self.cluster_centers[cluster_id] = (s, (i,j), cell_count)
+					cluster_id+=1
+		#print(cluster)
+		#print(self.board_2d)
+		return self.cluster
+
+	def halite_cluster_specific(self, group_threshold, centers): #centers is a list of location tuples (y,x)
+		self.cluster_centers = {}
+		self.cluster = np.zeros(np.shape(self.board_2d))
+		cluster_id = 1
+		for c in centers:
+			q = [c]
+			s, cell_count = self.create_cluster(q, group_threshold, cluster_id, 0.0, 0)
+			self.cluster_centers[cluster_id] = (s, c, cell_count)
+			cluster_id += 1
+		self.halite_cluster_update(group_threshold, cluster_id)
+		return self.cluster
+
+	def halite_cluster_max(self, group_threshold, index_num):
+		loc = self.sorted_map(index_num)
+		self.halite_cluster_specific(group_threshold, loc)
+		return self.cluster
+
+	def halite_cluster(self, group_threshold):
+		self.cluster_centers = {}
+		self.cluster = np.zeros(np.shape(self.board_2d))
+		cluster_id = 1
+		self.halite_cluster_update(group_threshold, cluster_id)
+		return self.cluster
 
 class HaliteBoard():
 	def __init__(self, obs):
@@ -100,8 +247,9 @@ class HaliteBoard():
 			next_pos=(curr_pos[0],curr_pos[1]-1)
 		else:
 			next_pos = curr_pos
+		print("planned next location: ", next_pos)
 		for i in next_locations:
-			if(next_pos[0]==i[0] and next_pos[1]==next_pos[1]):
+			if(next_pos[0]==i[0] and next_pos[1]==i[1]): #NOTE: THis used to be next_pos[1]==next_pos[1] <-- fix in master
 				return None
 		return next_pos
 	def valid_stay(self,curr_pos,next_locations):
@@ -198,7 +346,7 @@ class Agent():
 		#self.coords_2d = int_to_coords(self.coords_1d)
 		return action
 
-	def move_to_target_location(self, target_yx):
+	def move_to_target_location(self, target_yx):  #TODO fix to work with wrapping
 		posistion_yx = self.coords_2d
 		if posistion_yx[0] < target_yx[0]:
 			return 'SOUTH'
@@ -212,28 +360,31 @@ class Agent():
 	def checkStay(self,board,next_locations,actions,uid):
 		alt_act, alt_next_loc = board.valid_stay(self.coords_2d,next_locations) #Check if it is okay to stay in the same place
 		if(alt_act is None):
-			#print("Staying Still at ",self.coords_2d)
+			print("Staying Still at ",self.coords_2d)
 			next_locations.append(self.coords_2d)
 		else:
-			#print("Fleeing to ", alt_next_loc)
+			print("Fleeing to ", alt_next_loc)
 			actions[uid] = alt_act
 			next_locations.append(alt_next_loc)
 	def checkAction(self,action,board,next_locations,actions,uid,**kwargs):
 		if(action is not None):
+			print("planned action: ",action)
 			curr_ship_next_loc = board.valid_action(self.coords_2d,action,next_locations)
 			if(curr_ship_next_loc is not None):
 				actions[uid] = action
 				next_locations.append(curr_ship_next_loc)
-				#moveTarget = kwargs.get('moveTarget', None)
-				#if(moveTarget is not None):
-				#	if(moveTarget):
-				#		print("Moving toward ",curr_ship_next_loc)
-				#	else:
-				#		print("Moving randomly to ",curr_ship_next_loc)
+				moveTarget = kwargs.get('moveTarget', None)
+				if(moveTarget is not None):
+					if(moveTarget):
+						print("Moving toward ",curr_ship_next_loc)
+					else:
+						print("Moving randomly to ",curr_ship_next_loc)
 			else:
+				print("another ship will be where I want to go")
 				self.checkStay(board,next_locations,actions,uid)
 			return True
 		else:
+			print("None action given to checkAction")
 			self.checkStay(board,next_locations,actions,uid)
 			return False #To tell depositors to change into collectors
 class Yard():
@@ -243,7 +394,8 @@ class Yard():
 		self.coords_2d = int_to_coords(self.coords_1d)
 
 states = {}
-collection_states = {}
+collection_states = {} #Local or global harvesting, currently not used
+destination_cluster = {} #which cluster a ship goes to
 lastHaliteSpawn = starting_halite
 mapA = 0
 #OBS
@@ -258,23 +410,23 @@ mapA = 0
 #Halite Map Index maping (r,c) maps to c+r*(total_number_of_columns)
 #Guess: total_number_of_columns = 21
 def agent(obs):
-	global states,lastHaliteSpawn,collection_states,mapA
+	global states,lastHaliteSpawn, collection_states, mapA, destination_cluster
 	start = time.time()
 	actions = {}
 	destinations = {}
-	#print(obs.step)
+	print("STEP: ", obs.step)
 	halite, shipyards, ships = obs.players[obs.player]
 	#opp_halite, opp_shipyards, opp_ships = obs.players[1]
 	board = HaliteBoard(obs)
 	next_locations = []
 	shipsSorted = []
 	uidSorted = []
+	yard_location = (0,0)
 	newYard = False
 	newYard_loc = (0,0)
-	destination_cluster = {}
 	if(obs.step==0):
 		mapA = MapAnalysis(board.halite_board_2d)
-		mapA.halite_cluster_max(1000,25)
+		mapA.halite_cluster_max(CLUSTER_SUM_GOAL,CLUSTER_NUMBER_GOAL)
 	else:
 		mapA.set_board(board.halite_board_2d)
 	for uid, ship in ships.items(): #look at DEPOSIT ships first
@@ -285,43 +437,55 @@ def agent(obs):
 		if(not((uid in states) and states[uid]== DEPOSIT)):
 			shipsSorted.append(ship)
 			uidSorted.append(uid)	
-	#print("Number of ships: ",len(ships))
+	print("Number of ships: ",len(ships))
 	shipCount = 0
 	#for uid, ship_info in ships.items():
 	for k in range(0,len(ships)):
 		uid = uidSorted[k]
 		ship_info = shipsSorted[k]
-		#print("Info for Ship ",shipCount, "ID: ", uid)
+		print("Info for Ship ",shipCount, "ID: ", uid)
 		shipCount+=1
 		curr_ship = Agent(ship_info, uid)
+		print("Ship location: ",curr_ship.coords_2d)
 		if(len(shipyards) == 0 and halite >= 1000):
 			states[uid] = CONVERT
 			actions[uid] = CONVERT
+			print("Converting ship")
 		if(uid not in states):
 			states[uid] = COLLECT
-			#print("becoming a collector")
+			print("becoming a collector")
 
 		# collection logic: Move toward halite until storage is > 1000, at which point path to the closest shipyard
 		if(states[uid] == COLLECT):
 			#print(obs.step,int_to_coords(ship_info[0]),ship_info[1])
-			#print("COLLECT")
+			print("COLLECT")
 			if(ship_info[1] > 1000):
 				states[uid] = DEPOSIT
+				#print("STEP:", obs.step)
+				print("DELETEING from dest_cluster: ", uid, destination_cluster[uid],  mapA.cluster_centers[destination_cluster[uid]][1])
 				destination_cluster.pop(uid)
-				#print("Becoming a depositor")
+
+				print("Becoming a depositor")
 				# For now, stay still when transitioning states: TODO move back toward shipyard instead
 				curr_ship.checkStay(board,next_locations,actions,uid)
 			else:
 				if(uid not in destination_cluster): #Add to dictionary, set collection_state as going to cluster
-					pass
-
+					#print("STEP:", obs.step)
+					cluster_id = chooseCluster(mapA, destination_cluster, curr_ship.coords_2d)
+					if cluster_id==0:
+						print("ALL CLUSTERS ARE TAKEN",obs.step, uid)
+					destination_cluster[uid] = cluster_id
+					print("ADDING to dest_cluster: ",uid, cluster_id)
+				print("Cluster Center: ",mapA.cluster_centers[destination_cluster[uid]][1])	
 				#Go to cluster, or explore cluster
 				#Check if in cluster, if not, go toward center. else: explore
 				#explore: look
 				moveTarget = True
-				a = board.get_closest_halite_blacklist(curr_ship.coords_2d, obs.step+10,destinations.values()) #The threshold should increase as time goes on because halite grows over time.
+				#a = board.get_closest_halite_blacklist(curr_ship.coords_2d, obs.step+10,destinations.values()) #The threshold should increase as time goes on because halite grows over time.
+				a = mapA.optimal_halite_location(destination_cluster[uid], curr_ship.coords_2d, [yard_location])
+				print("optimal halite location: ", a)
 				if(a is not None):
-					destinations[uid] = a
+					#destinations[uid] = a
 					action = curr_ship.move_to_target_location(a)#curr_ship.return_random_action()#curr_ship.move_to_target_location(a) #Move to the closest Halite Cell
 				else:
 					action = curr_ship.return_random_action()
@@ -361,10 +525,11 @@ def agent(obs):
 				actions[uid] = SPAWN
 				lastHaliteSpawn = halite
 				next_locations.append(curr_yard.coords_2d)
-		#if(obs.step>390):#DEBUG 
-		#	print("Yard Position:", curr_yard.coords_2d)
+		#if(obs.step<2):#DEBUG 
+		yard_location = curr_yard.coords_2d
+		print("Yard Position:", curr_yard.coords_2d)
 	end = time.time()
 	#if(obs.step>390):
 	#	print(obs.halite)
-	return actions
+	return actions, board.halite_board_2d, mapA.cluster, mapA.cluster_centers
 
