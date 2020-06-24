@@ -253,7 +253,7 @@ class HaliteBoard():
 			next_pos=(curr_pos[0],curr_pos[1]-1)
 		else:
 			next_pos = curr_pos
-		print("planned next location: ", next_pos)
+		#print("planned next location: ", next_pos)
 		for i in next_locations:
 			if(next_pos[0]==i[0] and next_pos[1]==i[1]): #NOTE: THis used to be next_pos[1]==next_pos[1] <-- fix in master
 				return None
@@ -501,7 +501,7 @@ def agent(obs):
 				if(uid not in destination_cluster): #Add to dictionary, set collection_state as going to cluster
 					#print("STEP:", obs.step)
 					cluster_id = chooseCluster(mapA, destination_cluster, curr_ship.coords_2d)
-					if cluster_id==0:
+					#if cluster_id==0:
 						#print("ALL CLUSTERS ARE TAKEN",obs.step, uid)
 					destination_cluster[uid] = cluster_id
 					#print("ADDING to dest_cluster: ",uid, cluster_id)
