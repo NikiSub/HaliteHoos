@@ -469,6 +469,12 @@ def agent(obs):
 	#print("Number of ships: ",len(ships))
 	shipCount = 0
 	#for uid, ship_info in ships.items():
+	destroyed_ships = []
+	for ship_id in destination_cluster.keys():
+		if ship_id not in uidSorted:
+			destroyed_ships.append(ship_id)
+	for d in destroyed_ships:
+		destination_cluster.pop(d)
 	for k in range(0,len(ships)):
 		uid = uidSorted[k]
 		ship_info = shipsSorted[k]
@@ -492,7 +498,8 @@ def agent(obs):
 				states[uid] = DEPOSIT
 				#print("STEP:", obs.step)
 				#print("DELETEING from dest_cluster: ", uid, destination_cluster[uid],  mapA.cluster_centers[destination_cluster[uid]][1])
-				destination_cluster.pop(uid)
+				if uid in destination_cluster:
+					destination_cluster.pop(uid)
 
 				#print("Becoming a depositor")
 				# For now, stay still when transitioning states: TODO move back toward shipyard instead
