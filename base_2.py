@@ -52,14 +52,12 @@ def chooseCluster(mapA, destination_cluster, location_2d, step): #choose cluster
 		dist = manhattan_distance(location_2d, cluster_center_pos)
 		max_dist = BOARD_DIMS-1
 		average_cluster_size = (BOARD_DIMS**2)//cluster_num
-		#Maximize score  Want short distance, large sum, and large cell_count (In the future, get big clusters)
-		#With current parameters Max score is about: (20) + (20+) + (~15)
-		if step<100: 
-			score = (max_dist-dist) #get closest cluster 
+		if step<100: #With current parameters Max score is about: (20) + (20+) + (~15)
+			score = (max_dist-dist)*4+(halite_sum/CLUSTER_NUMBER_GOAL)*20+(cell_count*2)  #Maximize score  Want short distance, large sum, and large cell_count (In the future, get big clusters)
 		elif step<200:
-			score = (max_dist-dist)*5+(halite_sum/CLUSTER_NUMBER_GOAL)*40+(cell_count*2)
+			score = (max_dist-dist)*3+(halite_sum/CLUSTER_NUMBER_GOAL)*40+(cell_count*2)
 		elif step<300:
-			score = (max_dist-dist)*2+(halite_sum/CLUSTER_NUMBER_GOAL)*60+(cell_count*2) # start focusing more on sums
+			score = (max_dist-dist)*2+(halite_sum/CLUSTER_NUMBER_GOAL)*40+(cell_count*2)
 		else:
 			score = (max_dist-dist)+(halite_sum/CLUSTER_NUMBER_GOAL)*40+(cell_count*2)
 		if score >= max_score and cluster_id not in destination_cluster.values():  
