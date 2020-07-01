@@ -16,9 +16,12 @@ DIRS = ["NORTH", "SOUTH", "EAST", "WEST", None]
 DIRS_TO_NUM = {"NORTH":-BOARD_DIMS, "SOUTH":BOARD_DIMS, "EAST":1, "WEST":-1, None:0}
 CLUSTER_SUM_GOAL = 1000
 CLUSTER_NUMBER_GOAL = 25
+PROTECT_NUM = 2 #Number of miners each defender protects.
 
+#ship states
 COLLECT = "COLLECT"
 DEPOSIT = "DEPOSIT"
+DEFEND = "DEFEND"
 
 CONVERT = "CONVERT"
 SPAWN = "SPAWN"
@@ -437,6 +440,8 @@ collection_states = {} #Local or global harvesting, currently not used
 destination_cluster = {} #which cluster a ship goes to
 lastHaliteSpawn = starting_halite
 mapA = 0
+defender_to_miner_map = {}
+miner_to_defender_map = {}
 #OBS
 #obs.player, obs.step (turn) 0-398, obs.halite (map), obs.players
 
@@ -449,11 +454,11 @@ mapA = 0
 #Halite Map Index maping (r,c) maps to c+r*(total_number_of_columns)
 #Guess: total_number_of_columns = 21
 def agent(obs):
-	global states,lastHaliteSpawn, collection_states, mapA, destination_cluster, CLUSTER_SUM_GOAL, CLUSTER_NUMBER_GOAL
+	global states,lastHaliteSpawn, collection_states, mapA, destination_cluster, CLUSTER_SUM_GOAL, CLUSTER_NUMBER_GOAL, defender_to_miner_map, miner_to_defender_map
 	start = time.time()
 	actions = {}
 	destinations = {}
-	#print("STEP: ", obs.step)
+	print("STEP: ", obs.step)
 	halite, shipyards, ships = obs.players[obs.player]
 	#opp_halite, opp_shipyards, opp_ships = obs.players[1]
 	board = HaliteBoard(obs)
@@ -486,19 +491,32 @@ def agent(obs):
 		destination_cluster = {}
 	else:
 		mapA.set_board(board.halite_board_2d)
-	for uid, ship in ships.items(): #look at DEPOSIT ships first
+	deposit_count = 0
+	collector_count = 0
+	defender_count = 0
+	for uid, ship in ships.items(): #look at DEFEND ships first
+		if((uid in states) and states[uid]== DEFEND):
+			shipsSorted.append(ship)
+			uidSorted.append(uid)
+			defender_count+=1
+	for uid, ship in ships.items(): #look at DEPOSIT ships second
 		if((uid in states) and states[uid]== DEPOSIT):
 			shipsSorted.append(ship)
 			uidSorted.append(uid)
-	for uid, ship in ships.items(): #look at DEPOSIT ships first
-		if(not((uid in states) and states[uid]== DEPOSIT)):
+			deposit_count+=1
+	for uid, ship in ships.items(): #look at other ships
+		if  (uid in states) and states[uid]==COLLECT:
 			shipsSorted.append(ship)
-			uidSorted.append(uid)	
+			uidSorted.append(uid)
+			collector_count+=1
+		elif uid not in states:
+			shipsSorted.append(ship)
+			uidSorted.append(uid)
 	#print("Number of ships: ",len(ships))
 	shipCount = 0
 	#for uid, ship_info in ships.items():
 	destroyed_ships = []
-	for ship_id in destination_cluster.keys():
+	for ship_id in destination_cluster.keys(): # Deletes destroyed ships from dictionary
 		if ship_id not in uidSorted:
 			destroyed_ships.append(ship_id)
 	for d in destroyed_ships:
@@ -517,9 +535,38 @@ def agent(obs):
 			newYard_loc = curr_ship.coords_2d
 			#print("Converting ship")
 		if(uid not in states):
-			states[uid] = COLLECT
+			if defender_count<(collector_count//2):
+				states[uid] = DEFEND
+				defender_to_miner_map[uid] = []
+				for potential_id in states.keys():
+					if potential_id not in miner_to_defender_map:
+						miner_to_defender_map[potential_id] = uid
+						defender_to_miner_map[uid].append(potential_id)
+					if len(defender_to_miner_map[uid]) >= PROTECT_NUM:
+						break
+			else:
+				states[uid] = COLLECT
 			#print("becoming a collector")
-
+		if states[uid] == DEFEND:
+			print("Defender Ship location: ",curr_ship.coords_2d)
+			print("Defender Halite: ",curr_ship.halite)
+			for s_id in defender_to_miner_map.keys(): #Delete any destroyed ships
+				alive_miners = []
+				for miner_id in defender_to_miner_map[s_id]:
+					if miner_id in uidSorted:
+						alive_miners.append(miner_id)
+				defender_to_miner_map[s_id] = alive_miners
+			
+			if len(defender_to_miner_map[uid]) < PROTECT_NUM:
+				for potential_id in states.keys():
+					if potential_id not in miner_to_defender_map:
+						miner_to_defender_map[potential_id] = uid
+						defender_to_miner_map[uid].append(potential_id)
+					if len(defender_to_miner_map[uid]) >= PROTECT_NUM:
+						break
+			print("Protecting: ", defender_to_miner_map[uid])
+			action = curr_ship.return_random_action()
+			curr_ship.checkAction(action,board,next_locations,actions,uid)
 		# collection logic: Move toward halite until storage is > 1000, at which point path to the closest shipyard
 		if(states[uid] == COLLECT):
 			#print(obs.step,int_to_coords(ship_info[0]),ship_info[1])
@@ -583,7 +630,7 @@ def agent(obs):
 		curr_yard = Yard(shipyard, uid)
 		if(len(ships) == 0):
 			actions[uid] = SPAWN
-		if (obs.step <150 and halite>=1000 and len(ships)<8) or (obs.step <300 and halite>=3000 and len(ships)<6) or (obs.step <400 and halite>=5000 and len(ships)<4):
+		if (obs.step <150 and halite>=1000 and collector_count<8) or (obs.step <300 and halite>=3000 and collector_count<6) or (obs.step <400 and halite>=5000 and collector_count<4) or (halite>=1000 and defender_count<(collector_count//2)):
 			spawn = True
 			for n in next_locations:
 				if(same_pos_2d(n,curr_yard.coords_2d)):
