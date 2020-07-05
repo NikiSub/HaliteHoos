@@ -17,11 +17,18 @@ DIRS_TO_NUM = {"NORTH":-BOARD_DIMS, "SOUTH":BOARD_DIMS, "EAST":1, "WEST":-1, Non
 CLUSTER_SUM_GOAL = 1000
 CLUSTER_NUMBER_GOAL = 25
 PROTECT_NUM = 2 #Number of miners each defender protects.
+THREAT_NEAR = 4
+THREAT_AWAY = 7
 
 #ship states
 COLLECT = "COLLECT"
 DEPOSIT = "DEPOSIT"
 DEFEND = "DEFEND"
+
+#ship states with an enemy nearby
+COLLECT_THREAT = "COLLECT_T"
+DEPOSIT_THREAT = "DEPOSIT_T"
+DEFEND_THREAT = "DEFEND_T"
 
 CONVERT = "CONVERT"
 SPAWN = "SPAWN"
@@ -29,7 +36,24 @@ SPAWN = "SPAWN"
 #All coordinates will be in (row, column) form (y,x) because that is how the 2d Halite board is laid out
 
 #Current best agent
-
+def is_threat_mode(state): #returns true if the state is a threat
+	if state == COLLECT_THREAT or state == DEPOSIT_THREAT or state == DEFEND_THREAT:
+		return True
+	return False
+def toggle_threat_mode(state):
+	if state == COLLECT:
+		return COLLECT_THREAT
+	elif state == COLLECT_THREAT:
+		return COLLECT
+	elif state == DEPOSIT:
+		return DEPOSIT_THREAT
+	elif state == DEPOSIT_THREAT:
+		return DEPOSIT
+	elif state == DEFEND:
+		return DEFEND_THREAT
+	elif state == DEFEND_THREAT:
+		return DEFEND
+	return None
 def int_to_coords(num):
 	return (int(num//BOARD_DIMS),num%BOARD_DIMS) #(row,column)
 
@@ -55,10 +79,10 @@ def chooseCluster(mapA, destination_cluster, location_2d, step): #choose cluster
 		dist = manhattan_distance(location_2d, cluster_center_pos)
 		max_dist = BOARD_DIMS-1
 		average_cluster_size = (BOARD_DIMS**2)//cluster_num
-		#Maximize score  Want short distance, large sum, and large cell_count (In the future, get big clusters)
+		#Maximize score want short distance, large sum, and large cell_count (In the future, get big clusters)
 		#With current parameters Max score is about: (20) + (20+) + (~15)
 		if step<100: 
-			score = (max_dist-dist) #get closest cluster 
+			score = (max_dist-dist)  # get closest cluster 
 		elif step<200:
 			score = (max_dist-dist)*5+(halite_sum/CLUSTER_NUMBER_GOAL)*40+(cell_count*2)
 		elif step<300:
@@ -442,6 +466,7 @@ lastHaliteSpawn = starting_halite
 mapA = 0
 defender_to_miner_map = {}
 miner_to_defender_map = {}
+conflict = False
 #OBS
 #obs.player, obs.step (turn) 0-398, obs.halite (map), obs.players
 
@@ -460,7 +485,15 @@ def agent(obs):
 	destinations = {}
 	print("STEP: ", obs.step)
 	halite, shipyards, ships = obs.players[obs.player]
-	#opp_halite, opp_shipyards, opp_ships = obs.players[1]
+	opp_halite_list = []
+	opp_shipyards_list = []
+	opp_ships_list = []
+	for i in range(0, len(obs.players)):
+		if i != obs.player:
+			opp_halite, opp_shipyards, opp_ships = obs.players[1]
+			opp_halite_list.append(opp_halite)
+			opp_shipyards_list.append(opp_shipyards)
+			opp_ships_list.append(opp_ships)
 	board = HaliteBoard(obs)
 	next_locations = []
 	shipsSorted = []
@@ -494,25 +527,60 @@ def agent(obs):
 	deposit_count = 0
 	collector_count = 0
 	defender_count = 0
-	for uid, ship in ships.items(): #look at DEFEND ships first
-		if((uid in states) and states[uid]== DEFEND):
+	opponent_distance = {}   # (Key: Friendly Ship ID) (Value: Opponent ID, Opponent Distance, number of enemies within THREAT_NEAR)
+	for uid, ship in ships.items():  # look at DEFEND ships first and get enemy distances
+		curr_ship = Agent(ship, uid)
+		for opp_ships in opp_ships_list:
+			for opp_uid, opp_ship_info in opp_ships.items(): #fill out dictionary opponent_distance
+				opp_ship = Agent(opp_ship_info, opp_uid)
+				if uid in opponent_distance.keys():
+					dist = manhattan_distance(curr_ship.coords_2d, opp_ship.coords_2d)
+					count = 0
+					if dist <= THREAT_NEAR:
+						count+=1
+					opponent_distance[uid] = (opp_uid, dist, count)
+					if uid in states:
+						if is_threat_mode(states[uid]) and dist >= THREAT_AWAY:  # Ship is currently in threat mode and threat has left
+							states[uid] = toggle_threat_mode(states[uid])
+						elif not(is_threat_mode(states[uid])) and dist <= THREAT_NEAR:  # Ship is currently not in threat mode and threat has arrived
+							states[uid] = toggle_threat_mode(states[uid])
+				else:
+					dist = opponent_distance[uid][1]
+					newDist = manhattan_distance(curr_ship.coords_2d, opp_ship.coords_2d)
+					if newDist <= THREAT_NEAR:
+						opponent_distance[uid][2]+=1
+					if newDist < dist:
+						opponent_distance[uid][0] = opp_uid
+						opponent_distance[uid][1] = newDist
+		if (uid in states) and (states[uid] == DEFEND or states[uid]== DEFEND_THREAT): 
+			#Check if corresponding miners are ok
+			if uid in defender_to_miner_map:
+				miner_list = defender_to_miner_map[uid]
+				threat = False
+				for miner_id in miner_list:
+					if miner_id in states and is_threat_mode(states[miner_id]):
+						threat = True
+				if threat:
+					states[uid] = DEFEND_THREAT
+				else:
+					states[uid] = DEFEND
 			shipsSorted.append(ship)
 			uidSorted.append(uid)
 			defender_count+=1
-	for uid, ship in ships.items(): #look at DEPOSIT ships second
-		if((uid in states) and states[uid]== DEPOSIT):
+	for uid, ship in ships.items(): #look at DEPOSIT ships second TODO: Modify these for loops to be a regular sorting algorithm instead
+		if (uid in states) and (states[uid] == DEPOSIT or states[uid] == DEPOSIT_THREAT):
 			shipsSorted.append(ship)
 			uidSorted.append(uid)
 			deposit_count+=1
 	for uid, ship in ships.items(): #look at other ships
-		if  (uid in states) and states[uid]==COLLECT:
+		if  (uid in states) and (states[uid] == COLLECT or states[uid] == COLLECT_THREAT):
 			shipsSorted.append(ship)
 			uidSorted.append(uid)
 			collector_count+=1
 		elif uid not in states:
 			shipsSorted.append(ship)
 			uidSorted.append(uid)
-	#print("Number of ships: ",len(ships))
+	print("Number of miners: ",len(ships))
 	shipCount = 0
 	#for uid, ship_info in ships.items():
 	destroyed_ships = []
@@ -528,14 +596,14 @@ def agent(obs):
 		shipCount+=1
 		curr_ship = Agent(ship_info, uid)
 		#print("Ship location: ",curr_ship.coords_2d)
-		if(len(shipyards) == 0 and halite >= 500 and newYard==False) or (obs.step>=398 and curr_ship.halite>=500): #TODO: FIx this so only 1 yard spawns
+		if(len(shipyards) == 0 and halite >= 500 and newYard==False) or (obs.step>=398 and curr_ship.halite>=500): #TODO: Fix this so only 1 yard spawns
 			states[uid] = CONVERT
 			actions[uid] = CONVERT
 			newYard=True
 			newYard_loc = curr_ship.coords_2d
 			#print("Converting ship")
 		if(uid not in states):
-			if defender_count<(collector_count//2):
+			if defender_count<((collector_count + deposit_count)//2):
 				states[uid] = DEFEND
 				defender_to_miner_map[uid] = []
 				for potential_id in states.keys():
@@ -605,7 +673,7 @@ def agent(obs):
 					action = curr_ship.return_random_action()
 					moveTarget = False
 
-				curr_ship.checkAction(action,board,next_locations,actions,uid,moveTarget=moveTarget)	
+				curr_ship.checkAction(action,board,next_locations,actions,uid,moveTarget=moveTarget)
 
 
 		# deposit logic: path naively back to the closest shipyard
@@ -630,7 +698,7 @@ def agent(obs):
 		curr_yard = Yard(shipyard, uid)
 		if(len(ships) == 0):
 			actions[uid] = SPAWN
-		if (obs.step <150 and halite>=1000 and collector_count<8) or (obs.step <300 and halite>=3000 and collector_count<6) or (obs.step <400 and halite>=5000 and collector_count<4) or (halite>=1000 and defender_count<(collector_count//2)):
+		if (obs.step <150 and halite>=1000 and collector_count<8) or (obs.step <300 and halite>=3000 and collector_count<6) or (obs.step <400 and halite>=5000 and collector_count<4) or (halite>=1000 and defender_count<((collector_count + deposit_count)//2)):
 			spawn = True
 			for n in next_locations:
 				if(same_pos_2d(n,curr_yard.coords_2d)):
