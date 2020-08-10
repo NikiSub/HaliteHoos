@@ -268,10 +268,6 @@ class HaliteBoard():
 			return closest_yx
 		except:
 			return None
-<<<<<<< HEAD
-
-=======
->>>>>>> ActiveDefense
 	# returns the position of the closest halite deposit above a certain threshold, blacklist contains a list of locations not to go to.
 	def get_closest_halite(self, curr_pos, threshold):
 		halite_coords = self.get_halite_locations(threshold)
@@ -296,12 +292,8 @@ class HaliteBoard():
 		elif(action=="WEST" and curr_pos[1]>0):
 			next_pos=(curr_pos[0],curr_pos[1]-1)
 		else:
-<<<<<<< HEAD
-			next_pos=curr_pos
-=======
 			next_pos = curr_pos
 		#print("planned next location: ", next_pos)
->>>>>>> ActiveDefense
 		for i in next_locations:
 			if(next_pos[0]==i[0] and next_pos[1]==i[1]): #NOTE: THis used to be next_pos[1]==next_pos[1] <-- fix in master
 				return None
@@ -783,22 +775,6 @@ def agent(obs):
 		if(states[uid] == DEPOSIT):
 			#print("DEPOSIT")
 			closest_shipyard = board.get_closest_shipyard(curr_ship.coords_2d)
-<<<<<<< HEAD
-			if closest_shipyard is None:
-				states[uid] = CONVERT
-				actions[uid] = CONVERT
-			else:
-				#print('DEPOSITING to ', curr_ship.coords_2d, closest_shipyard, len(board.get_shipyard_locations()))
-				ship_action = curr_ship.move_to_target_location(closest_shipyard)
-				action_not_none = curr_ship.checkAction(ship_action,board,next_locations,actions,uid)
-				if(not(action_not_none)):
-					states[uid] = COLLECT #Once deposited, go back and collect
-	for uid, shipyard in shipyards.items():
-		curr_yard = Yard(shipyard, uid)
-		if(len(ships) == 0):
-			actions[uid] = SPAWN
-		if(halite>=1000 and len(ships)<8):
-=======
 			if closest_shipyard is None and newYard==False:
 				newYard=True
 				states[uid] = CONVERT
@@ -819,7 +795,6 @@ def agent(obs):
 		if(len(ships) == 0):
 			actions[uid] = SPAWN
 		if (obs.step <150 and halite>=1000 and collector_count<4) or (obs.step <300 and halite>=3000 and collector_count<4) or (obs.step <400 and halite>=5000 and collector_count<4) or (halite>=1000 and defender_count<((collector_count + deposit_count)//2)):
->>>>>>> ActiveDefense
 			spawn = True
 			for n in next_locations:
 				if(same_pos_2d(n,curr_yard.coords_2d)):
@@ -832,13 +807,7 @@ def agent(obs):
 		yard_location = curr_yard.coords_2d
 		#print("Yard Position:", curr_yard.coords_2d)
 	end = time.time()
-<<<<<<< HEAD
-	#if(obs.step==398):
-	#	print(obs.halite)
-	return actions
-=======
 	#if(obs.step>390):
 	#	print(obs.halite)
 	return actions#, board.halite_board_2d, mapA.cluster, mapA.cluster_centers
->>>>>>> ActiveDefense
 

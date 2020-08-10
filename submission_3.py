@@ -11,7 +11,6 @@ from kaggle_environments.envs.halite.helpers import *
 import kaggle_environments
 import random
 '''
-
 Initialization code can run when the file is loaded.  The first call to agent() is allowed 30 sec
 The agent function is the last function in the file (does not matter its name)
 agent must run in less than 6 sec
@@ -27,8 +26,8 @@ all_dirs=[Point(0,1), Point(1,0), Point(0,-1), Point(-1,0)]
 start=None
 num_shipyard_targets=4
 size=None
-# dict mapping ship_id->target cell position
-ship_target={}
+# Will keep track of whether a ship is collecting halite or carrying cargo to a shipyard
+ship_target={}   # where to go to collect
 me=None
 did_init=False
 quiet=False
@@ -89,7 +88,7 @@ def set_turn_data(board):
   turn.num_ships=len(me.ships)
   turn.max_ships=compute_max_ships(board.step)
   turn.total_halite=me.halite
-  #this is matrix of halite in cells (NOTE: indexes are WRONG, but it is not used, should be fixed)
+  #this is matrix of halite in cells
   turn.halite_matrix=np.reshape(board.observation['halite'], (board.configuration.size,board.configuration.size))
   turn.num_shipyards=len(me.shipyards)
   #compute enemy presence and enemy halite matrices
@@ -302,7 +301,7 @@ def assign_targets(board,ships):
       C[i,j]=v
   print('C is {}'.format(C.shape))
   #Compute the optimal assignment
-  row,col=scipy.optimize.linear_sum_assignment(C, maximize=True)  #scipy.optimize.linear_sum_assignment(C*-1) 
+  row,col=scipy.optimize.linear_sum_assignment(C, maximize=True)
   #so ship row[i] is assigned to target col[j]
   #print('got row {} col {}'.format(row,col))
   #print(C[row[0],col[0]])
