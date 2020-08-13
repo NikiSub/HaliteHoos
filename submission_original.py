@@ -11,7 +11,6 @@ from kaggle_environments.envs.halite.helpers import *
 import kaggle_environments
 import random
 '''
-
 Initialization code can run when the file is loaded.  The first call to agent() is allowed 30 sec
 The agent function is the last function in the file (does not matter its name)
 agent must run in less than 6 sec
@@ -19,12 +18,9 @@ Syntax errors when running the file do not cause any message, but cause your age
 
 '''
 CONFIG_MAX_SHIPS=20
-SHIPYARD_DISTANCE = 7
-halite_min=50 #TODO: make this a dynamic number
 
 #print('kaggle version',kaggle_environments.__version__)
 #### Global variables
-print_debug=print
 all_actions=[ShipAction.NORTH, ShipAction.EAST,ShipAction.SOUTH,ShipAction.WEST]
 all_dirs=[Point(0,1), Point(1,0), Point(0,-1), Point(-1,0)]
 start=None
@@ -100,7 +96,6 @@ def set_turn_data(board):
   #filled in by shipid as a ship takes up a square
   turn.taken={}
   turn.last_episode = (board.step == (board.configuration.episode_steps-2))
-  turn.newConvert = False
   
 def init(obs,config):
   #This is only called on first call to agent()
@@ -114,7 +109,6 @@ def init(obs,config):
     #we are called in competition, quiet output
     print=print_none
     pprint.pprint=print_none
-    pass
   size = config.size
 
 def limit(x,a,b):
@@ -244,19 +238,21 @@ def nearest_shipyard(pos):
       mn=d
       best_pos=sy.position
   return mn,best_pos
-
-def nearest_shipyard_potential_shipyard(pos, shipyard_list):
-  #return distance, position of nearest shipyard to pos.  100,None if no shipyards
-  mn=100
-  best_pos=None
-  for sy in shipyard_list:
-    d=dist(pos, sy.position)
-    if d<mn:
-      mn=d
-      best_pos=sy.position
-  return mn,best_pos
-
-def simulate_target_assignment(board, ships_list, shipyard_list):
+  
+def assign_targets(board,ships):
+  #Assign the ships to a cell containing halite optimally
+  #set ship_target[ship_id] to a Position
+  #We assume that we mine halite containing cells optimally or return to deposit
+  #directly if that is optimal, based on maximizing halite per step.
+  #Make a list of pts containing cells we care about, this will be our columns of matrix C
+  #the rows are for each ship in collect
+  #computes global dict ship_tagert with shipid->Position for its target
+  #global ship targets should already exist
+  old_target=copy.copy(ship_target)
+  ship_target.clear()
+  if len(ships)==0:
+    return
+  halite_min=50
   pts1=[]
   pts2=[]
   for pt,c in board.cells.items():
@@ -264,21 +260,17 @@ def simulate_target_assignment(board, ships_list, shipyard_list):
     if c.halite > halite_min:
       pts1.append(pt)
   #Now add duplicates for each shipyard - this is directly going to deposit
-  for sy in shipyard_list:
+  for sy in me.shipyards:
     for i in range(num_shipyard_targets):
       pts2.append(sy.position)
-  potential_ship_target = {}
-  dist_from_cells_to_yard = 0
-  C=np.zeros((len(ships_list),len(pts1)+len(pts2)))
-  B=np.zeros((len(ships_list),len(pts1)+len(pts2)))
+  #this will be the value of assigning C[ship,pt]
+  C=np.zeros((len(ships),len(pts1)+len(pts2)))
   #this will be the optimal mining steps we calculated
-  for i,ship in enumerate(ships_list):
-    dist_from_cells_to_yard += nearest_shipyard_potential_shipyard(ship.position, shipyard_list)[0]
+  for i,ship in enumerate(ships):
     for j,pt in enumerate(pts1+pts2):
       #two distances: from ship to halite, from halite to nearest shipyard
       d1=dist(ship.position,pt)
-      d2,shipyard_position=nearest_shipyard_potential_shipyard(pt, shipyard_list)
-      mining = 0
+      d2,shipyard_position=nearest_shipyard(pt)
       if shipyard_position is None:
         #don't know where to go if no shipyard
         d2=1
@@ -307,75 +299,15 @@ def simulate_target_assignment(board, ships_list, shipyard_list):
             v+= enemy_halite/(d1+1)  # want to attack them or scare them off
       #print('shipid {} col {} is {} with {:8.1f} score {:8.2f}'.format(ship.id,j, pt,board.cells[pt].halite,v))
       C[i,j]=v
-      B[i,j]=d1+d2+mining
   print('C is {}'.format(C.shape))
   #Compute the optimal assignment
-  row,col=scipy.optimize.linear_sum_assignment(C, maximize=True)  #scipy.optimize.linear_sum_assignment(C*-1) 
+  row,col=scipy.optimize.linear_sum_assignment(C, maximize=True)
   #so ship row[i] is assigned to target col[j]
   #print('got row {} col {}'.format(row,col))
   #print(C[row[0],col[0]])
   pts=pts1+pts2
-  halite_per_step_sum = 0
-  steps_sum = 0
-  count_sum = 0
-  total_halite_gained = 0
   for r,c in zip(row,col):
-    potential_ship_target[ships_list[r].id]=pts[c] #TODO: CHANGE
-    halite_per_step_sum += C[r,c]
-    steps_sum +=(B[r,c])
-    total_halite_gained += C[r,c]*(B[r,c])
-    count_sum+=1
-  return potential_ship_target, halite_per_step_sum, steps_sum/count_sum, total_halite_gained, dist_from_cells_to_yard
-
-def assign_targets(board,ships): # Assign targets and 
-  #Assign the ships to a cell containing halite optimally
-  #set ship_target[ship_id] to a Position
-  #We assume that we mine halite containing cells optimally or return to deposit
-  #directly if that is optimal, based on maximizing halite per step.
-  #Make a list of pts containing cells we care about, this will be our columns of matrix C
-  #the rows are for each ship in collect
-  #computes global dict ship_tagert with shipid->Position for its target
-  #global ship targets should already exist
-  global ship_target
-  old_target=copy.copy(ship_target)
-  ship_target.clear()
-  if len(ships)==0:
-    return ships
-  #this will be the value of assigning C[ship,pt]
-  ship_target, halite_per_step_sum, expected_steps, total_halite_gained, dist_from_cells_to_yard = simulate_target_assignment(board, ships, me.shipyards)
-  ship_return = ships
-  if board.step==105:
-    #print_debug("Original Halite per step: ", halite_per_step_sum)
-    #print_debug("Original average expected steps: ", expected_steps)
-    #print_debug("Original total halite gained: ", total_halite_gained)
-    #print_debug("Original Minimum distance to shipyard: ", dist_from_cells_to_yard)
-    pass
-  if turn.newConvert == False and board.step>=100 and board.step<=200 and turn.num_shipyards<2 and turn.total_halite>=1000:  #TODO AND IF TURN>X, HALITE>Y, Shipyard_num>Z
-    converted_ship_indx = -1
-    for i,ship in enumerate(ships):
-      if nearest_shipyard(ship.position)[0] >= SHIPYARD_DISTANCE: #Test if this ship was converted into a shipyard
-        new_ship_list = copy.copy(ships)
-        conversion_candidate = new_ship_list.pop(i)
-        new_yard_list = copy.copy(me.shipyards)
-        new_yard_list.append(conversion_candidate)
-        new_ship_target, new_halite_per_step_sum, new_expected_steps, new_total_halite_gained, new_dist_from_cells_to_yard = simulate_target_assignment(board, new_ship_list, new_yard_list)
-        if new_halite_per_step_sum > halite_per_step_sum:
-          ship_target = new_ship_target
-          ship_return = new_ship_list
-          converted_ship_indx = i
-    if converted_ship_indx != -1:
-      ships[converted_ship_indx].next_action=ShipAction.CONVERT
-      turn.taken[ship.position]=1
-      turn.num_shipyards+=1
-      turn.total_halite-=500
-        #print_debug("Ship location: ",conversion_candidate.position)
-        #print_debug("New Halite per step: ", new_halite_per_step_sum)
-        #print_debug("New average expected steps: ", new_expected_steps)
-        #print_debug("New total halite gained: ", new_total_halite_gained)
-        #print_debug("New Minimum distance to shipyard: ", new_dist_from_cells_to_yard)
-        # compare metrics and then determine if and where to make a shipyard
-        # is the 500 halite worth it, how many shipyards should there be, max?
-        # 
+    ship_target[ships[r].id]=pts[c]
   #print out results
   print('\nShip Targets')
   print('Ship      position          target')
@@ -390,7 +322,8 @@ def assign_targets(board,ships): # Assign targets and
       ta=' NEWTARGET'
     print('{0:6}  at ({1[0]:2},{1[1]:2})  assigned ({2[0]:2},{2[1]:2}) h {3:3} {4:10} {5:10}'.format(
       id, board.ships[id].position, t, board.cells[t].halite,st, ta))
-  return ship_return
+
+  return
 
 def make_avoidance_matrix(myship_halite):
   #make a matrix of True where we want to avoid, uses
@@ -461,19 +394,17 @@ def ship_converts(board):
       turn.num_shipyards+=1
       turn.total_halite-=500
       print('ship id {} no escape converting'.format(ship.id))
-      turn.newConvert = True
     #CHECK if last step and > 500 halite, convert
     if turn.last_episode and ship.halite > 500:
       ship.next_action=ShipAction.CONVERT
       turn.taken[ship.position]=1
       turn.num_shipyards+=1
       turn.total_halite-=500
-      turn.newConvert = True
       
 def ship_moves(board):
   ships=[ship for ship in me.ships if ship.next_action is None]
   #update ship_target
-  ships = assign_targets(board,ships)
+  assign_targets(board,ships)
   #For all ships without a target, we give them a random movement (we will check below if this
   actions={}   # record actions for each ship
   for ship in ships:
@@ -490,7 +421,7 @@ def ship_moves(board):
     avoid=make_avoidance_matrix(ship.halite)
     attack=make_attack_matrix(ship.halite)
     #see if there is a attack options
-    action_list=actions[ship.id]+[None]+all_actions #Go toward target, or stay still, or move elsewhere
+    action_list=actions[ship.id]+[None]+all_actions
     #see if we should add an attack diversion to our options
     #NOTE: we will avoid attacking a ship that is on the avoid spot - is this a good idea?
     for a in all_actions:
@@ -528,7 +459,6 @@ def agent(obs, config):
   board = Board(obs, config)
   me=board.current_player
   set_turn_data(board)
-  #print_debug('==== step {} sim {}'.format(board.step,board.step+1))
   print('==== step {} sim {}'.format(board.step,board.step+1))
   print('ships {} shipyards {}'.format(turn.num_ships,turn.num_shipyards))
   print_enemy_ships(board)
